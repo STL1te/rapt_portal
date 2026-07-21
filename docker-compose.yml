@@ -1,5 +1,6 @@
 services:
   backend:
+    image: rapt-portal-backend:latest
     build: ./backend
     env_file: ./backend/.env        # RAPT_USERNAME, RAPT_SECRET
     environment:
@@ -15,6 +16,7 @@ services:
       start_period: 10s
 
   frontend:
+    image: rapt-portal-frontend:latest
     build: ./frontend
     ports:
       - "${FRONTEND_PORT:-8080}:80"  # host port from root .env (default 8080); nginx proxies /api -> backend
