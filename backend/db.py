@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    text,
     Boolean,
     DateTime,
     Float,
@@ -43,6 +44,7 @@ class HydrometerSession(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     hydrometer_id: Mapped[str] = mapped_column(String, index=True)
     name: Mapped[str | None] = mapped_column(String)
+    yeast_id: Mapped[str | None] = mapped_column(String, index=True)
     start_date: Mapped[datetime | None] = mapped_column(DateTime)
     end_date: Mapped[datetime | None] = mapped_column(DateTime)
     original_gravity: Mapped[float | None] = mapped_column(Float)
@@ -135,3 +137,7 @@ class BrewTelemetry(Base):
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(hydrometer_sessions)"))}
+        if "yeast_id" not in cols:
+            conn.execute(text("ALTER TABLE hydrometer_sessions ADD COLUMN yeast_id VARCHAR"))

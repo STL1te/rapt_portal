@@ -90,6 +90,8 @@ docker compose down
 
 - Keep backend code compatible with Python 3.11+, even though the Docker image
   currently uses Python 3.13.
+- Text files in this repo should be UTF-8 with LF endings. Respect the root
+  `.editorconfig` and do not introduce cp1251/Windows-1252 encoded files.
 - Prefer existing simple module-level helpers over adding abstractions.
 - Keep local API response field names in snake_case; the frontend types in
   `frontend/src/api.ts` mirror those names.
@@ -104,6 +106,11 @@ docker compose down
 - Some existing UI strings appear to have encoding damage. Do not mass-rewrite
   unrelated text or encoding as part of narrow changes; fix only the files and
   strings required by the task.
+- When reading or writing text in scripts/tools, pass `encoding="utf-8"`
+  explicitly. For PowerShell text inspection/editing, prefer explicit UTF-8
+  reads/writes. For Python console scripts on Windows, avoid printing raw
+  non-ASCII device names unless stdout is known to be UTF-8; use a safe
+  escaped/logging representation when needed.
 
 ## Verification Expectations
 

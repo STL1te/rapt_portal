@@ -4,7 +4,7 @@ import statistics
 
 from sqlalchemy import select
 
-from db import BrewSession, HydrometerSession, HydrometerTelemetry
+from db import BrewSession, HydrometerSession, HydrometerTelemetry, Yeast
 
 _GRAVITY_MIN, _GRAVITY_MAX = 980.0, 1130.0
 
@@ -33,9 +33,20 @@ def session_dict(s: HydrometerSession, db=None) -> dict:
     d = row(s)
     og, fg = s.original_gravity, s.final_gravity
     ok = og is not None and fg is not None and og >= fg
+    yeast = db.get(Yeast, s.yeast_id) if db is not None and s.yeast_id else None
     d["current_gravity"] = _current_gravity(db, s.id) if db is not None else None
     d["abv"] = round((og - fg) / 7.5, 2) if ok else None
     d["attenuation"] = round((og - fg) / (og - 1000) * 100, 1) if ok and og > 1000 else None
+    d["yeast_name"] = yeast.name if yeast else None
+    d["yeast_product_id"] = yeast.product_id if yeast else None
+    d["yeast_attenuation"] = yeast.attenuation if yeast else None
+    d["yeast_min_temperature"] = yeast.min_temperature if yeast else None
+    d["yeast_max_temperature"] = yeast.max_temperature if yeast else None
+    d["target_final_gravity"] = (
+        round(og - (og - 1000) * yeast.attenuation / 100, 2)
+        if yeast and yeast.attenuation is not None and og is not None
+        else None
+    )
     return d
 
 

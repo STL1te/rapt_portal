@@ -13,6 +13,13 @@ export type Session = {
   id: string
   hydrometer_id: string
   name: string | null
+  yeast_id: string | null
+  yeast_name: string | null
+  yeast_product_id: string | null
+  yeast_attenuation: number | null
+  yeast_min_temperature: number | null
+  yeast_max_temperature: number | null
+  target_final_gravity: number | null
   start_date: string | null
   end_date: string | null
   original_gravity: number | null
@@ -97,6 +104,22 @@ export type BrewTelemetryPoint = {
   profile_session_time: number | null
 }
 
+export type Yeast = {
+  id: string
+  name: string | null
+  product_id: string | null
+  laboratory: string | null
+  type: string | null
+  form: string | null
+  min_temperature: number | null
+  max_temperature: number | null
+  flocculation: string | null
+  attenuation: number | null
+  notes: string | null
+  is_global: boolean
+  archived: boolean
+}
+
 export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
 export const getSessions = (hydrometerId: string) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
@@ -112,3 +135,5 @@ export const getBrewSession = (sessionId: string) =>
   get<BrewSession>(`/api/brew-sessions/${sessionId}`)
 export const getBrewTelemetry = (sessionId: string) =>
   get<BrewTelemetryPoint[]>(`/api/brew-sessions/${sessionId}/telemetry`)
+
+export const getYeasts = () => get<Yeast[]>('/api/yeasts')

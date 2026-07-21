@@ -80,6 +80,7 @@ async def sync_once() -> dict:
                     "id": active_id,
                     "hydrometer_id": hid,
                     "name": active.get("name"),
+                    "yeast_id": active.get("yeastId"),
                     "start_date": _dt(active.get("startDate")),
                     "active": True,
                 })

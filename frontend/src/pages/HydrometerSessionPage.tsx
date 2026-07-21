@@ -1,13 +1,34 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getSession, getTelemetry } from '../api'
 import HydrometerChart from '../components/HydrometerChart'
-import StatCards from '../components/StatCards'
 import { brix, date, duration, grav, sg } from '../fmt'
 import { useTitle } from '../useTitle'
 
 function parseUtc(value: string) {
   return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  icon,
+  tone,
+}: {
+  label: string
+  value: string
+  sub?: string
+  icon: string
+  tone?: 'ok' | 'warn' | 'quiet' | 'info'
+}) {
+  return (
+    <div className={tone ? `stat stat-${tone}` : 'stat'}>
+      <span className="stat-label"><i className={icon} /> {label}</span>
+      <span className="stat-value">{value}</span>
+      {sub && <span className="stat-sub">{sub}</span>}
+    </div>
+  )
 }
 
 export default function HydrometerSessionPage() {
@@ -49,8 +70,9 @@ export default function HydrometerSessionPage() {
   const gravityDrop24h = latestGravity != null && point24h?.gravity != null
     ? point24h.gravity - latestGravity
     : null
-  const gravityToFg = latestGravity != null && s.final_gravity != null
-    ? latestGravity - s.final_gravity
+  const referenceFg = s.target_final_gravity ?? s.final_gravity
+  const gravityToFg = latestGravity != null && referenceFg != null
+    ? latestGravity - referenceFg
     : null
 
   const status = !s.active
@@ -58,42 +80,53 @@ export default function HydrometerSessionPage() {
     : gravityDrop24h != null && gravityDrop24h >= 8
       ? { tone: 'active', title: 'Активное брожение', body: `Плотность упала на ${grav(gravityDrop24h)} за последние 24 часа.` }
       : gravityToFg != null && gravityToFg <= 0
-        ? { tone: 'done', title: 'Оценка финиша догоняет', body: 'Текущая плотность уже ниже текущей оценки финиша; оценка еще может сдвинуться по новым точкам.' }
+        ? { tone: 'done', title: 'Финиш достигнут', body: 'Текущая плотность уже ниже или равна расчётной цели.' }
         : gravityToFg != null && gravityToFg <= 2
-          ? { tone: 'done', title: 'Похоже, дображивает', body: 'Текущая плотность уже близка к оценке финальной плотности.' }
+          ? { tone: 'done', title: 'Почти финиш', body: 'Текущая плотность уже очень близка к расчётному FG.' }
           : gravityDrop24h != null && gravityDrop24h >= 2
-            ? { tone: 'steady', title: 'Брожение замедлилось', body: 'Изменения еще есть, но пик активности уже прошел.' }
+            ? { tone: 'steady', title: 'Брожение замедлилось', body: 'Изменения ещё есть, но пик активности уже прошёл.' }
             : { tone: 'quiet', title: 'Мало движения', body: 'За последние сутки изменение небольшое. Проверь температуру и последние точки.' }
 
   const density = (n: number | null) => `${sg(n)} SG · ${brix(n)}°Bx`
-  const stats = [
-    { label: 'Текущая плотность', value: grav(latestGravity), sub: density(latestGravity), icon: 'fa-solid fa-droplet' },
-    {
-      label: 'Изменение за 24ч',
-      value: gravityDrop24h == null ? '—' : grav(gravityDrop24h),
-      sub: point24h ? `было ${grav(point24h.gravity)}` : 'недостаточно данных',
-      icon: 'fa-solid fa-chart-line',
-    },
-    {
-      label: 'Температура',
-      value: latestTemp == null ? '—' : `${latestTemp.toFixed(1)}°C`,
-      sub: latest?.timestamp ? `обновлено ${new Date(parseUtc(latest.timestamp)).toLocaleString()}` : undefined,
-      icon: 'fa-solid fa-temperature-three-quarters',
-    },
-    {
-      label: 'Оценочный FG',
-      value: grav(s.final_gravity),
-      sub: gravityToFg == null
-        ? density(s.final_gravity)
-        : gravityToFg <= 0
-          ? `текущая ниже на ${grav(Math.abs(gravityToFg))}`
-          : `до оценки финиша ${grav(gravityToFg)}`,
-      icon: 'fa-solid fa-droplet-slash',
-    },
-    { label: 'Алкоголь', value: s.abv == null ? '—' : `${s.abv.toFixed(1)}%`, icon: 'fa-solid fa-wine-bottle' },
-    { label: 'Аттенюация', value: s.attenuation == null ? '—' : `${s.attenuation.toFixed(0)}%`, icon: 'fa-solid fa-percent' },
-    { label: 'Длительность', value: duration(s.start_date, s.end_date), icon: 'fa-solid fa-clock' },
-  ]
+  const fgLabel = s.target_final_gravity == null ? 'Оценочный FG' : 'FG по дрожжам'
+  const fgSub = gravityToFg == null
+    ? density(referenceFg)
+    : gravityToFg <= 0
+      ? `текущая ниже на ${grav(Math.abs(gravityToFg))}`
+      : `до цели ${grav(gravityToFg)}`
+  const yeastSub = s.yeast_product_id
+    ? `${s.yeast_product_id}${s.yeast_attenuation == null ? '' : ` · ${Math.round(s.yeast_attenuation)}% attenuation`}`
+    : (s.yeast_attenuation == null ? 'Дрожжи не указаны' : `${Math.round(s.yeast_attenuation)}% attenuation`)
+  const tempRange = s.yeast_min_temperature != null && s.yeast_max_temperature != null
+    ? `${s.yeast_min_temperature.toFixed(1)}–${s.yeast_max_temperature.toFixed(1)}°C`
+    : s.yeast_min_temperature != null
+      ? `от ${s.yeast_min_temperature.toFixed(1)}°C`
+      : s.yeast_max_temperature != null
+        ? `до ${s.yeast_max_temperature.toFixed(1)}°C`
+        : null
+  const tempTone = latestTemp == null || tempRange == null
+    ? 'quiet'
+    : latestTemp >= (s.yeast_min_temperature ?? Number.NEGATIVE_INFINITY) &&
+        latestTemp <= (s.yeast_max_temperature ?? Number.POSITIVE_INFINITY)
+      ? 'ok'
+      : 'warn'
+  const attenuationDelta = s.attenuation != null && s.yeast_attenuation != null
+    ? s.attenuation - s.yeast_attenuation
+    : null
+  const attenuationSub = s.yeast_attenuation == null
+    ? undefined
+    : attenuationDelta == null
+      ? `цель дрожжей ${Math.round(s.yeast_attenuation)}%`
+      : attenuationDelta >= 0
+      ? `выше цели дрожжей на ${Math.round(attenuationDelta)}%`
+      : `ниже цели дрожжей на ${Math.round(Math.abs(attenuationDelta))}%`
+  const attenuationTone = s.attenuation == null || s.yeast_attenuation == null
+    ? 'quiet'
+    : Math.abs(attenuationDelta ?? 0) <= 3
+      ? 'ok'
+      : attenuationDelta != null && attenuationDelta < 0
+        ? 'warn'
+        : 'info'
 
   return (
     <div>
@@ -103,17 +136,81 @@ export default function HydrometerSessionPage() {
         {s.active && <span className="badge active">активна</span>}
         <span className="dates">{date(s.start_date)} — {s.active ? 'сейчас' : date(s.end_date)}</span>
       </div>
-      <section className={`fermentation-summary ${status.tone}`}>
-        <div>
-          <div className="fermentation-summary-title">{status.title}</div>
-          <div className="fermentation-summary-body">{status.body}</div>
-        </div>
-        <div className="fermentation-summary-meta">
-          <span>OG {grav(s.original_gravity)}</span>
-          <span>Оценочный FG {grav(s.final_gravity)}</span>
-        </div>
+
+      <section className="session-hero">
+        <article className={`hero-card hero-status ${status.tone}`}>
+          <div className="hero-label"><i className="fa-solid fa-wave-square" /> Стадия брожения</div>
+          <div className="hero-title">{status.title}</div>
+          <div className="hero-body">{status.body}</div>
+          <div className="hero-meta">
+            <span>OG {grav(s.original_gravity)}</span>
+            <span>Текущая {grav(latestGravity)}</span>
+          </div>
+        </article>
+
+        <article className="hero-card">
+          <div className="hero-label"><i className="fa-solid fa-droplet-slash" /> {fgLabel}</div>
+          <div className="hero-title">{grav(referenceFg)}</div>
+          <div className="hero-body">{fgSub}</div>
+          <div className="hero-meta">
+            <span>FG по телеметрии {grav(s.final_gravity)}</span>
+          </div>
+        </article>
+
+        <article className="hero-card">
+          <div className="hero-label"><i className="fa-solid fa-vial" /> Дрожжи</div>
+          {s.yeast_id && s.yeast_name ? (
+            <Link to={`/yeasts/${s.yeast_id}`} className="hero-link">{s.yeast_name}</Link>
+          ) : (
+            <div className="hero-title">—</div>
+          )}
+          <div className="hero-body">{yeastSub}</div>
+        </article>
       </section>
-      <StatCards stats={stats} />
+
+      <section className="stats stats-compact">
+        <MetricCard
+          label="Текущая плотность"
+          value={grav(latestGravity)}
+          sub={density(latestGravity)}
+          icon="fa-solid fa-droplet"
+        />
+        <MetricCard
+          label="Изменение за 24ч"
+          value={gravityDrop24h == null ? '—' : grav(gravityDrop24h)}
+          sub={point24h ? `было ${grav(point24h.gravity)}` : 'недостаточно данных'}
+          icon="fa-solid fa-chart-line"
+        />
+        <MetricCard
+          label="Температура"
+          value={latestTemp == null ? '—' : `${latestTemp.toFixed(1)}°C`}
+          sub={
+            tempRange == null
+              ? (latest?.timestamp ? `обновлено ${new Date(parseUtc(latest.timestamp)).toLocaleString()}` : undefined)
+              : `диапазон дрожжей ${tempRange}`
+          }
+          icon="fa-solid fa-temperature-three-quarters"
+          tone={tempTone}
+        />
+        <MetricCard
+          label="Алкоголь"
+          value={s.abv == null ? '—' : `${s.abv.toFixed(1)}%`}
+          icon="fa-solid fa-wine-bottle"
+        />
+        <MetricCard
+          label="Аттенюация"
+          value={s.attenuation == null ? '—' : `${s.attenuation.toFixed(0)}%`}
+          sub={attenuationSub}
+          icon="fa-solid fa-percent"
+          tone={attenuationTone}
+        />
+        <MetricCard
+          label="Длительность"
+          value={duration(s.start_date, s.end_date)}
+          icon="fa-solid fa-clock"
+        />
+      </section>
+
       <section className="chart">
         <HydrometerChart data={telemetry ?? []} />
       </section>

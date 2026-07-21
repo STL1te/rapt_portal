@@ -109,11 +109,11 @@ Useful commands:
 ```bash
 uv run python rapt_client.py
 uv run python scripts/test_gravities.py
-uv run python -m scripts.backfill
+uv run python -m scripts.portal_data_sync
 ```
 
 `rapt_client.py` is a login/API smoke test. `scripts/test_gravities.py` checks
-the gravity estimator. `scripts.backfill` imports historical hydrometer
+the gravity estimator. `scripts.portal_data_sync` imports historical hydrometer
 sessions from the RAPT web portal API and expects a portal bearer token in
 `backend/.portal_token`.
 
