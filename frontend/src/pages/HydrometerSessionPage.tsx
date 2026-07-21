@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getSession, getTelemetry } from '../api'
+import { getHydrometerSession, getHydrometerTelemetry } from '../api'
 import HydrometerChart from '../components/HydrometerChart'
 import { brix, date, duration, grav, sg } from '../fmt'
 import { useTitle } from '../useTitle'
@@ -37,7 +37,7 @@ export default function HydrometerSessionPage() {
 
   const { data: s, isLoading, error } = useQuery({
     queryKey: ['hydrometer-session', id],
-    queryFn: () => getSession(id!),
+    queryFn: () => getHydrometerSession(id!),
     enabled: !!id,
   })
   const {
@@ -46,7 +46,7 @@ export default function HydrometerSessionPage() {
     error: telemetryError,
   } = useQuery({
     queryKey: ['hydrometer-telemetry', id],
-    queryFn: () => getTelemetry(id!),
+    queryFn: () => getHydrometerTelemetry(id!),
     enabled: !!id,
   })
 

@@ -61,6 +61,7 @@ export type BrewZilla = {
 }
 
 export type BrewStep = {
+  id?: string | null
   order: number
   name: string | null
   controlType: string | null
@@ -85,6 +86,21 @@ export type BrewSession = {
   start_date: string | null
   end_date: string | null
   active: boolean
+  current_step_id: string | null
+  current_step_name: string | null
+  current_step_order: number | null
+  current_step_progress: number | null
+  session_progress: number | null
+  total_steps: number | null
+  last_telemetry_at: string | null
+  latest_temperature: number | null
+  latest_target_temperature: number | null
+  latest_wort_temperature: number | null
+  latest_heating_run_time: number | null
+  latest_aux_run_time: number | null
+  delta_to_target: number | null
+  wort_delta_to_target: number | null
+  step_target_temperature: number | null
   profile?: BrewProfile | null
 }
 
@@ -92,8 +108,6 @@ export type BrewTelemetryPoint = {
   timestamp: string
   temperature: number | null // element/kettle temp
   target_temperature: number | null
-  min_target_temperature: number | null
-  max_target_temperature: number | null
   control_device_temperature: number | null // external probe (wort)
   heating_run_time: number | null
   heating_starts: number | null
@@ -120,20 +134,36 @@ export type Yeast = {
   archived: boolean
 }
 
-export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
-export const getSessions = (hydrometerId: string) =>
+export const getHydrometers = () =>
+  get<Hydrometer[]>('/api/hydrometers')
+export const getHydrometerSessions = (
+  hydrometerId: string,
+) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
-export const getSession = (sessionId: string) =>
+export const getHydrometerSession = (
+  sessionId: string,
+) =>
   get<Session>(`/api/hydrometer-sessions/${sessionId}`)
-export const getTelemetry = (sessionId: string) =>
+export const getHydrometerTelemetry = (
+  sessionId: string,
+) =>
   get<HydrometerTelemetryPoint[]>(`/api/hydrometer-sessions/${sessionId}/telemetry`)
 
-export const getBrewzillas = () => get<BrewZilla[]>('/api/brewzillas')
-export const getBrewSessions = (brewzillaId: string) =>
-  get<BrewSession[]>(`/api/brewzillas/${brewzillaId}/sessions`)
-export const getBrewSession = (sessionId: string) =>
+export const getBrewzillas = () =>
+  get<BrewZilla[]>('/api/brewzillas')
+export const getBrewSessions = (
+  brewzillaId: string,
+  includeShort = false,
+) =>
+  get<BrewSession[]>(`/api/brewzillas/${brewzillaId}/sessions?include_short=${includeShort}`)
+export const getBrewSession = (
+  sessionId: string,
+) =>
   get<BrewSession>(`/api/brew-sessions/${sessionId}`)
-export const getBrewTelemetry = (sessionId: string) =>
+export const getBrewTelemetry = (
+  sessionId: string,
+) =>
   get<BrewTelemetryPoint[]>(`/api/brew-sessions/${sessionId}/telemetry`)
 
-export const getYeasts = () => get<Yeast[]>('/api/yeasts')
+export const getYeasts = () =>
+  get<Yeast[]>('/api/yeasts')

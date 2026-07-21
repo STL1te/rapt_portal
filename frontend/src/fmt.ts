@@ -30,3 +30,9 @@ export function duration(start: string | null, end: string | null): string {
   const hours = Math.floor((ms % 86400000) / 3600000)
   return `${days}d ${hours}h`
 }
+
+export function durationHm(start: string | null, end: string | null): string {
+  if (!start) return '—'
+  const seconds = Math.max(0, Math.round(((end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()) / 1000))
+  return stepLen(seconds)
+}

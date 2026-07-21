@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getHydrometers, getSessions } from '../api'
+import { getHydrometers, getHydrometerSessions } from '../api'
 import { date, duration, grav } from '../fmt'
 import { useTitle } from '../useTitle'
 
@@ -14,7 +14,7 @@ export default function HydrometerDetail() {
 
   const { data: sessions, isLoading, error } = useQuery({
     queryKey: ['sessions', id],
-    queryFn: () => getSessions(id!),
+    queryFn: () => getHydrometerSessions(id!),
     enabled: !!id,
   })
 

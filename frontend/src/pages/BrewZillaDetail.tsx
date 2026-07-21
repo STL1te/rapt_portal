@@ -1,20 +1,22 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getBrewSessions, getBrewzillas } from '../api'
-import { date, duration } from '../fmt'
+import { date, durationHm } from '../fmt'
 import { useTitle } from '../useTitle'
 
 export default function BrewZillaDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [includeShort, setIncludeShort] = useState(false)
 
   const { data: brewzillas } = useQuery({ queryKey: ['brewzillas'], queryFn: getBrewzillas })
   const name = brewzillas?.find((b) => b.id === id)?.name
   useTitle(name ?? 'Пивоварня')
 
   const { data: sessions, isLoading, error } = useQuery({
-    queryKey: ['brew-sessions', id],
-    queryFn: () => getBrewSessions(id!),
+    queryKey: ['brew-sessions', id, includeShort],
+    queryFn: () => getBrewSessions(id!, includeShort),
     enabled: !!id,
   })
 
@@ -25,6 +27,18 @@ export default function BrewZillaDetail() {
     <div>
       <a className="back" onClick={() => navigate('/')}><i className="fa-solid fa-arrow-left" /> Дашборд</a>
       <h2>{name ? `${name} — история варок` : 'История варок'}</h2>
+      <div className="chart-toolbar">
+        <span className="chart-toolbar-label">Показывать короткие варки &lt; 1 часа</span>
+        <div className="chart-presets">
+          <button
+            type="button"
+            className={`chart-preset${includeShort ? ' active' : ''}`}
+            onClick={() => setIncludeShort((value) => !value)}
+          >
+            {includeShort ? 'включено' : 'скрыты'}
+          </button>
+        </div>
+      </div>
       {!sessions?.length ? (
         <p>Варок пока нет.</p>
       ) : (
@@ -38,7 +52,7 @@ export default function BrewZillaDetail() {
                 <td>{s.name ?? s.id}{s.active && <span className="badge active">варит</span>}</td>
                 <td>{date(s.start_date)}</td>
                 <td>{s.active ? '—' : date(s.end_date)}</td>
-                <td>{duration(s.start_date, s.end_date)}</td>
+                <td>{durationHm(s.start_date, s.end_date)}</td>
               </tr>
             ))}
           </tbody>
