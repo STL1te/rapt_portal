@@ -111,6 +111,8 @@ docker compose down
   reads/writes. For Python console scripts on Windows, avoid printing raw
   non-ASCII device names unless stdout is known to be UTF-8; use a safe
   escaped/logging representation when needed.
+- The shell here is PowerShell. Do not use `&&` as a command separator; run
+  commands separately or use PowerShell-valid control flow.
 
 ## Git Workflow
 
