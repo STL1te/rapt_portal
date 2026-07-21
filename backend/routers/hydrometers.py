@@ -22,7 +22,7 @@ def list_sessions(hydrometer_id: str) -> list[dict]:
             .where(HydrometerSession.hydrometer_id == hydrometer_id)
             .order_by(HydrometerSession.start_date.desc())
         )
-        return [session_dict(s) for s in rows]
+        return [session_dict(s, db) for s in rows]
 
 
 @router.get("/api/hydrometer-sessions/{session_id}")
@@ -31,7 +31,7 @@ def get_session(session_id: str) -> dict:
         s = db.get(HydrometerSession, session_id)
         if not s:
             raise HTTPException(404, "session not found")
-        return session_dict(s)
+        return session_dict(s, db)
 
 
 @router.get("/api/hydrometer-sessions/{session_id}/telemetry")

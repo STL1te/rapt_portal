@@ -64,6 +64,24 @@ class HydrometerTelemetry(Base):
     rssi: Mapped[float | None] = mapped_column(Float)
 
 
+class Yeast(Base):
+    __tablename__ = "yeasts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String, index=True)
+    product_id: Mapped[str | None] = mapped_column(String)
+    laboratory: Mapped[str | None] = mapped_column(String, index=True)
+    type: Mapped[str | None] = mapped_column(String, index=True)
+    form: Mapped[str | None] = mapped_column(String)
+    min_temperature: Mapped[float | None] = mapped_column(Float)
+    max_temperature: Mapped[float | None] = mapped_column(Float)
+    flocculation: Mapped[str | None] = mapped_column(String)
+    attenuation: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_global: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class BrewZilla(Base):
     __tablename__ = "brewzillas"
 

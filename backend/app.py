@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import sync
 from config import SYNC_INTERVAL_SECONDS
 from db import init_db
-from routers import brewzillas, hydrometers, system
+from routers import brewzillas, hydrometers, system, yeasts
 
 
 async def _sync_loop() -> None:
@@ -46,3 +46,4 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(hydrometers.router)
 app.include_router(brewzillas.router)
+app.include_router(yeasts.router)

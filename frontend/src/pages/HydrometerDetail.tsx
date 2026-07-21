@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { useParams, useNavigate } from 'react-router-dom'
-import { getSessions, getHydrometers } from '../api'
-import { grav, date, duration } from '../fmt'
+import { useNavigate, useParams } from 'react-router-dom'
+import { getHydrometers, getSessions } from '../api'
+import { date, duration, grav } from '../fmt'
 import { useTitle } from '../useTitle'
 
 export default function HydrometerDetail() {

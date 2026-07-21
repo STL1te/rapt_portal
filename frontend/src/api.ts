@@ -17,6 +17,7 @@ export type Session = {
   end_date: string | null
   original_gravity: number | null
   final_gravity: number | null
+  current_gravity: number | null
   active: boolean
   abv: number | null
   attenuation: number | null
