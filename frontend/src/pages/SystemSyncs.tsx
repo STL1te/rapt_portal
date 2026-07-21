@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  getActiveSystemJobs,
   getSystemJob,
   triggerPortalDataSync,
   triggerSync,
@@ -9,22 +10,36 @@ import {
 } from '../api'
 import { useTitle } from '../useTitle'
 
+type JobKind = 'base_sync' | 'portal_sync' | 'yeast_sync'
+
 type SyncCardProps = {
   title: string
   description: string
   actionLabel: string
   disabled: boolean
+  statusText: string | null
+  statusTone: 'muted' | 'error'
   children?: ReactNode
   onRun: () => Promise<void>
 }
 
-function SyncCard({ title, description, actionLabel, disabled, children, onRun }: SyncCardProps) {
+function SyncCard({
+  title,
+  description,
+  actionLabel,
+  disabled,
+  statusText,
+  statusTone,
+  children,
+  onRun,
+}: SyncCardProps) {
   return (
     <section className="sync-card">
       <div className="sync-card-body">
         <h3 className="panel-title">{title}</h3>
         <p className="muted">{description}</p>
         {children}
+        {statusText ? <p className={statusTone}>{statusText}</p> : null}
       </div>
       <button type="button" disabled={disabled} onClick={() => void onRun()}>
         {actionLabel}
@@ -33,13 +48,16 @@ function SyncCard({ title, description, actionLabel, disabled, children, onRun }
   )
 }
 
-function statusText(job: SystemJob | null): string | null {
-  if (!job) return null
-  if (job.status === 'queued') return 'Задача в очереди…'
-  if (job.status === 'running') return 'Синк выполняется…'
-  if (job.status === 'done') return 'Синк завершён.'
-  if (job.status === 'failed') return `Ошибка: ${job.error ?? 'unknown error'}`
-  return null
+function describeJob(job: SystemJob | null): { text: string | null; tone: 'muted' | 'error' } {
+  if (!job) return { text: null, tone: 'muted' }
+  if (job.status === 'queued') return { text: 'Задача в очереди…', tone: 'muted' }
+  if (job.status === 'running') return { text: 'Синк выполняется…', tone: 'muted' }
+  if (job.status === 'done') return { text: 'Синк завершён.', tone: 'muted' }
+  return { text: `Ошибка: ${job.error ?? 'unknown error'}`, tone: 'error' }
+}
+
+function isActive(job: SystemJob | null | undefined): boolean {
+  return Boolean(job && (job.status === 'queued' || job.status === 'running'))
 }
 
 export default function SystemSyncs() {
@@ -47,39 +65,91 @@ export default function SystemSyncs() {
   const queryClient = useQueryClient()
   const [portalToken, setPortalToken] = useState('')
   const [forcePortalSync, setForcePortalSync] = useState(false)
-  const [job, setJob] = useState<SystemJob | null>(null)
+  const [jobsByKind, setJobsByKind] = useState<Partial<Record<JobKind, SystemJob>>>({})
 
   useEffect(() => {
-    if (!job || !['queued', 'running'].includes(job.status)) return
+    let cancelled = false
+
+    async function loadActiveJobs() {
+      try {
+        const jobs = await getActiveSystemJobs()
+        if (cancelled) return
+        setJobsByKind(() => {
+          const next: Partial<Record<JobKind, SystemJob>> = {}
+          for (const job of jobs) {
+            if (
+              job.kind === 'base_sync' ||
+              job.kind === 'portal_sync' ||
+              job.kind === 'yeast_sync'
+            ) {
+              next[job.kind] = job
+            }
+          }
+          return next
+        })
+      } catch {
+        if (cancelled) return
+      }
+    }
+
+    void loadActiveJobs()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const activeJobs = Object.values(jobsByKind).filter(isActive)
+    if (!activeJobs.length) return
 
     const timer = window.setTimeout(async () => {
-      try {
-        const nextJob = await getSystemJob(job.id)
-        setJob(nextJob)
-        if (nextJob.status === 'done') {
-          await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
-          await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
-          await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
+      const updates = await Promise.all(
+        activeJobs.map(async (job) => {
+          try {
+            return await getSystemJob(job.id)
+          } catch (error) {
+            return {
+              ...job,
+              status: 'failed' as const,
+              finished_at: new Date().toISOString(),
+              error: String(error),
+            }
+          }
+        }),
+      )
+
+      setJobsByKind((current) => {
+        const next = { ...current }
+        for (const job of updates) {
+          if (job.kind === 'base_sync' || job.kind === 'portal_sync' || job.kind === 'yeast_sync') {
+            next[job.kind] = job
+          }
         }
-      } catch (error) {
-        setJob({
-          ...job,
-          status: 'failed',
-          finished_at: new Date().toISOString(),
-          error: String(error),
-        })
+        return next
+      })
+
+      if (updates.some((job) => job.status === 'done')) {
+        await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
+        await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
+        await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
       }
     }, 1500)
 
     return () => window.clearTimeout(timer)
-  }, [job, queryClient])
+  }, [jobsByKind, queryClient])
 
-  async function startJob(runner: () => Promise<SystemJob>) {
-    setJob(await runner())
+  async function startJob(kind: JobKind, runner: () => Promise<SystemJob>) {
+    const job = await runner()
+    setJobsByKind((current) => ({ ...current, [kind]: job }))
   }
 
-  const busy = Boolean(job && ['queued', 'running'].includes(job.status))
-  const message = statusText(job)
+  const baseJob = jobsByKind.base_sync ?? null
+  const portalJob = jobsByKind.portal_sync ?? null
+  const yeastJob = jobsByKind.yeast_sync ?? null
+
+  const baseState = useMemo(() => describeJob(baseJob), [baseJob])
+  const portalState = useMemo(() => describeJob(portalJob), [portalJob])
+  const yeastState = useMemo(() => describeJob(yeastJob), [yeastJob])
 
   return (
     <>
@@ -101,14 +171,6 @@ export default function SystemSyncs() {
         <p className="muted">
           Используется для portal data sync и sync yeasts. На сервере не сохраняется.
         </p>
-        {job ? (
-          <p className="muted">
-            Job: {job.kind} · {job.id}
-          </p>
-        ) : null}
-        {message ? (
-          <p className={message.startsWith('Ошибка:') ? 'error' : 'muted'}>{message}</p>
-        ) : null}
       </section>
 
       <div className="sync-card-grid">
@@ -116,16 +178,22 @@ export default function SystemSyncs() {
           title="Обычный sync"
           description="Базовый синк устройств и активных сессий через обычный RAPT API."
           actionLabel="Запустить"
-          disabled={busy}
-          onRun={() => startJob(triggerSync)}
+          disabled={isActive(baseJob)}
+          statusText={baseState.text}
+          statusTone={baseState.tone}
+          onRun={() => startJob('base_sync', triggerSync)}
         />
 
         <SyncCard
           title="Portal data sync"
           description="Подтягивает историю profile sessions из portal-only API и обновляет локальные сессии."
           actionLabel="Запустить"
-          disabled={busy || !portalToken.trim()}
-          onRun={() => startJob(() => triggerPortalDataSync(portalToken, forcePortalSync))}
+          disabled={isActive(portalJob) || !portalToken.trim()}
+          statusText={portalState.text}
+          statusTone={portalState.tone}
+          onRun={() =>
+            startJob('portal_sync', () => triggerPortalDataSync(portalToken, forcePortalSync))
+          }
         >
           <label className="sync-checkbox">
             <input
@@ -141,8 +209,10 @@ export default function SystemSyncs() {
           title="Sync yeasts"
           description="Обновляет локальный каталог дрожжей из portal inventory."
           actionLabel="Запустить"
-          disabled={busy || !portalToken.trim()}
-          onRun={() => startJob(() => triggerYeastSync(portalToken))}
+          disabled={isActive(yeastJob) || !portalToken.trim()}
+          statusText={yeastState.text}
+          statusTone={yeastState.tone}
+          onRun={() => startJob('yeast_sync', () => triggerYeastSync(portalToken))}
         />
       </div>
     </>

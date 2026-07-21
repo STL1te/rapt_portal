@@ -3,7 +3,13 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from system_jobs import get_job, start_base_sync_job, start_portal_sync_job, start_yeast_sync_job
+from system_jobs import (
+    get_job,
+    list_active_jobs,
+    start_base_sync_job,
+    start_portal_sync_job,
+    start_yeast_sync_job,
+)
 
 router = APIRouter()
 
@@ -42,3 +48,8 @@ def system_job(job_id: str) -> dict:
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     return job
+
+
+@router.get("/api/system-jobs")
+def system_jobs() -> list[dict]:
+    return list_active_jobs()

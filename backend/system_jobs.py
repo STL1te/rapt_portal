@@ -57,6 +57,17 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         return _snapshot(job) if job else None
 
 
+def list_active_jobs() -> list[dict[str, Any]]:
+    with SessionLocal() as db:
+        jobs = (
+            db.query(SystemJob)
+            .filter(SystemJob.status.in_(ACTIVE_STATUSES))
+            .order_by(SystemJob.created_at.asc())
+            .all()
+        )
+        return [_snapshot(job) for job in jobs]
+
+
 async def ensure_interval_base_sync() -> None:
     job = await start_base_sync_job()
     if job["status"] in TERMINAL_STATUSES:
