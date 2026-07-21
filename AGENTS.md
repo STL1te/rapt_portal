@@ -94,6 +94,9 @@ docker compose down
   currently uses Python 3.13.
 - Text files in this repo should be UTF-8 with LF endings. Respect the root
   `.editorconfig` and do not introduce cp1251/Windows-1252 encoded files.
+- If a touched file already contains Cyrillic UI text, preserve it as UTF-8 and
+  avoid edit paths that can mojibake the file; verify the saved file still shows
+  readable Cyrillic before handoff.
 - Prefer existing simple module-level helpers over adding abstractions.
 - Keep local API response field names in snake_case; the frontend types in
   `frontend/src/api.ts` mirror those names.

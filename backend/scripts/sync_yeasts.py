@@ -4,6 +4,7 @@ Usage (from backend/):
   uv run python scripts/sync_yeasts.py
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -17,16 +18,16 @@ from db import SessionLocal, Yeast, init_db
 
 
 def _load_token() -> str:
-    tok = (
-        Path(".portal_token").read_text(encoding="utf-8") if Path(".portal_token").exists() else ""
-    )
+    tok = os.environ.get("PORTAL_TOKEN", "")
+    if not tok and Path(".portal_token").exists():
+        tok = Path(".portal_token").read_text(encoding="utf-8")
     return tok.removeprefix("Bearer ").strip()
 
 
-def sync_yeasts() -> int:
-    token = _load_token()
+def sync_yeasts(portal_token: str | None = None) -> int:
+    token = (portal_token or _load_token()).removeprefix("Bearer ").strip()
     if not token:
-        raise SystemExit("Set backend/.portal_token to a portal bearer token")
+        raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
 
     init_db()
     headers = {"Authorization": f"Bearer {token}"}

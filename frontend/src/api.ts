@@ -46,6 +46,16 @@ async function get<T>(path: string): Promise<T> {
   return r.json()
 }
 
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+  return r.json()
+}
+
 export type BrewZilla = {
   id: string
   name: string | null
@@ -134,6 +144,13 @@ export type Yeast = {
   archived: boolean
 }
 
+export type SyncResult = {
+  status: string
+  hydrometers?: number
+  active_sessions?: number
+  count?: number
+}
+
 export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
 export const getHydrometerSessions = (hydrometerId: string) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
@@ -151,3 +168,8 @@ export const getBrewTelemetry = (sessionId: string) =>
   get<BrewTelemetryPoint[]>(`/api/brew-sessions/${sessionId}/telemetry`)
 
 export const getYeasts = () => get<Yeast[]>('/api/yeasts')
+export const triggerSync = () => post<SyncResult>('/api/sync')
+export const triggerPortalDataSync = (portalToken: string, force = false) =>
+  post<SyncResult>('/api/portal_data_sync', { portal_token: portalToken, force })
+export const triggerYeastSync = (portalToken: string) =>
+  post<SyncResult>('/api/sync_yeasts', { portal_token: portalToken })

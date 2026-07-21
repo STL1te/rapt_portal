@@ -1,14 +1,15 @@
-import { Routes, Route, NavLink } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Hydrometers from './pages/Hydrometers'
-import HydrometerDetail from './pages/HydrometerDetail'
-import HydrometerSessionPage from './pages/HydrometerSessionPage'
-import Brewzillas from './pages/Brewzillas'
-import BrewZillaDetail from './pages/BrewZillaDetail'
-import BrewSessionPage from './pages/BrewSessionPage'
-import Yeasts from './pages/Yeasts'
-import YeastDetail from './pages/YeastDetail'
+import { NavLink, Route, Routes } from 'react-router-dom'
 import ThemeToggle from './components/ThemeToggle'
+import BrewSessionPage from './pages/BrewSessionPage'
+import BrewZillaDetail from './pages/BrewZillaDetail'
+import Brewzillas from './pages/Brewzillas'
+import Dashboard from './pages/Dashboard'
+import HydrometerDetail from './pages/HydrometerDetail'
+import Hydrometers from './pages/Hydrometers'
+import HydrometerSessionPage from './pages/HydrometerSessionPage'
+import SystemSyncs from './pages/SystemSyncs'
+import YeastDetail from './pages/YeastDetail'
+import Yeasts from './pages/Yeasts'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <div className="brand">
           <img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal
         </div>
+
         <nav>
           <NavLink to="/" end>
             <i className="fa-solid fa-gauge-high" /> Дашборд
@@ -31,7 +33,15 @@ export default function App() {
             <i className="fa-solid fa-vial" /> Дрожжи
           </NavLink>
         </nav>
-        <ThemeToggle />
+
+        <div className="sidebar-footer">
+          <nav className="sidebar-secondary-nav">
+            <NavLink to="/system-syncs">
+              <i className="fa-solid fa-gear" /> Системные синки
+            </NavLink>
+          </nav>
+          <ThemeToggle />
+        </div>
       </aside>
       <main>
         <Routes>
@@ -44,6 +54,7 @@ export default function App() {
           <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />
           <Route path="/yeasts" element={<Yeasts />} />
           <Route path="/yeasts/:id" element={<YeastDetail />} />
+          <Route path="/system-syncs" element={<SystemSyncs />} />
         </Routes>
       </main>
     </div>

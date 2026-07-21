@@ -63,6 +63,45 @@ a {
   gap: 4px;
   margin-top: 24px;
 }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-secondary-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-secondary-nav a {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.sidebar-secondary-nav a:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.sidebar-secondary-nav a.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.sidebar-secondary-nav a i {
+  width: 18px;
+  text-align: center;
+  margin-right: 6px;
+}
+
 .sidebar nav a {
   padding: 8px 12px;
   border-radius: 8px;
@@ -521,6 +560,7 @@ th {
 }
 
 .field input,
+.field textarea,
 .field select,
 .pagination button {
   width: 100%;
@@ -533,9 +573,105 @@ th {
 }
 
 .field input:focus,
+.field textarea:focus,
 .field select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.sync-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.sync-token {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.sync-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sync-actions button {
+  width: auto;
+  cursor: pointer;
+}
+
+.sync-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.sync-actions button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sync-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.sync-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sync-card-body {
+  display: grid;
+  gap: 10px;
+  flex: 1;
+}
+
+.sync-card .panel-title {
+  margin-bottom: 0;
+}
+
+.sync-card p {
+  margin: 0;
+}
+
+.sync-card button,
+.sync-actions button {
+  width: auto;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sync-card button:hover:not(:disabled),
+.sync-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.sync-card button:disabled,
+.sync-actions button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sync-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--muted);
+}
+
+.sync-checkbox input {
+  width: auto;
+  margin: 2px 0 0;
 }
 
 .field-compact,

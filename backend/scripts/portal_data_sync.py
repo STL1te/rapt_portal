@@ -35,15 +35,16 @@ from db import (
 )
 
 
-def _load_token() -> str:
-    tok = os.environ.get("PORTAL_TOKEN", "")
+def _normalize_token(token: str | None) -> str:
+    return (token or "").removeprefix("Bearer ").strip()
+
+
+def _load_token(portal_token: str | None = None) -> str:
+    tok = portal_token or os.environ.get("PORTAL_TOKEN", "")
     if not tok and os.path.exists(".portal_token"):
         with open(".portal_token", encoding="utf-8") as f:
             tok = f.read()
-    return tok.removeprefix("Bearer ").strip()
-
-
-PORTAL_TOKEN = _load_token()
+    return _normalize_token(tok)
 
 
 def _safe_name(value: str | None) -> str:
@@ -61,7 +62,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _list_sessions(
-    client: httpx.AsyncClient, endpoint: str, id_param: str, id_value: str
+    client: httpx.AsyncClient, token: str, endpoint: str, id_param: str, id_value: str
 ) -> list[dict]:
     out: list[dict] = []
     page = 1
@@ -69,7 +70,7 @@ async def _list_sessions(
         r = await client.get(
             f"{API_BASE}/api/ProfileSessions/{endpoint}",
             params={id_param: id_value, "page": page, "pageSize": 100, "filterText": ""},
-            headers={"Authorization": f"Bearer {PORTAL_TOKEN}"},
+            headers={"Authorization": f"Bearer {token}"},
         )
         r.raise_for_status()
         data = r.json()
@@ -83,8 +84,9 @@ def _is_new(db, model, row_id: str) -> bool:
     return db.get(model, row_id) is None
 
 
-async def portal_data_sync(force: bool = False) -> None:
-    if not PORTAL_TOKEN:
+async def portal_data_sync(force: bool = False, portal_token: str | None = None) -> None:
+    token = _load_token(portal_token)
+    if not token:
         raise SystemExit("Set PORTAL_TOKEN to a portal (rapt-web) bearer token")
 
     init_db()
@@ -96,7 +98,7 @@ async def portal_data_sync(force: bool = False) -> None:
         for h in hydrometers:
             hid = h["id"]
             sessions = await _list_sessions(
-                client, "GetHydrometerProfileSessions", "hydrometerId", hid
+                client, token, "GetHydrometerProfileSessions", "hydrometerId", hid
             )
             print(f"{_safe_name(h.get('name'))}: {len(sessions)} session(s)")
             for s in sessions:
@@ -123,7 +125,7 @@ async def portal_data_sync(force: bool = False) -> None:
                     sync._refresh_gravities(sid)
                 await asyncio.sleep(0.5)
 
-        await _sync_brewzillas(client, force=force)
+        await _sync_brewzillas(client, token, force=force)
 
     with SessionLocal() as db:
         print(
@@ -138,12 +140,14 @@ async def portal_data_sync(force: bool = False) -> None:
         )
 
 
-async def _sync_brewzillas(client: httpx.AsyncClient, force: bool = False) -> None:
+async def _sync_brewzillas(client: httpx.AsyncClient, token: str, force: bool = False) -> None:
     import json
 
     for b in await rapt_client.get_brewzillas():
         bid = b["id"]
-        sessions = await _list_sessions(client, "GetBrewZillaProfileSessions", "brewZillaId", bid)
+        sessions = await _list_sessions(
+            client, token, "GetBrewZillaProfileSessions", "brewZillaId", bid
+        )
         print(f"{_safe_name(b.get('name'))}: {len(sessions)} brew session(s)")
         for s in sessions:
             sid = s["id"]

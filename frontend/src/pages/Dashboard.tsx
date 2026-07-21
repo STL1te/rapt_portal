@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getHydrometers, getBrewzillas } from '../api'
-import { grav, temp, pct, dbm } from '../fmt'
+import { getBrewzillas, getHydrometers } from '../api'
+import { dbm, grav, pct, temp } from '../fmt'
 import { useTitle } from '../useTitle'
 
 export default function Dashboard() {
