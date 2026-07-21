@@ -1,6 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { triggerPortalDataSync, triggerSync, triggerYeastSync } from '../api'
+import {
+  getSystemJob,
+  triggerPortalDataSync,
+  triggerSync,
+  triggerYeastSync,
+  type SystemJob,
+} from '../api'
 import { useTitle } from '../useTitle'
 
 type SyncCardProps = {
@@ -27,29 +33,53 @@ function SyncCard({ title, description, actionLabel, disabled, children, onRun }
   )
 }
 
+function statusText(job: SystemJob | null): string | null {
+  if (!job) return null
+  if (job.status === 'queued') return 'Задача в очереди…'
+  if (job.status === 'running') return 'Синк выполняется…'
+  if (job.status === 'done') return 'Синк завершён.'
+  if (job.status === 'failed') return `Ошибка: ${job.error ?? 'unknown error'}`
+  return null
+}
+
 export default function SystemSyncs() {
   useTitle('Системные синки')
   const queryClient = useQueryClient()
   const [portalToken, setPortalToken] = useState('')
   const [forcePortalSync, setForcePortalSync] = useState(false)
-  const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [job, setJob] = useState<SystemJob | null>(null)
 
-  async function runSync(action: string, runner: () => Promise<void>) {
-    setBusyAction(action)
-    setSyncMessage(null)
-    try {
-      await runner()
-      await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
-      await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
-      await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
-      setSyncMessage('Синк завершён.')
-    } catch (error) {
-      setSyncMessage(`Ошибка: ${String(error)}`)
-    } finally {
-      setBusyAction(null)
-    }
+  useEffect(() => {
+    if (!job || !['queued', 'running'].includes(job.status)) return
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const nextJob = await getSystemJob(job.id)
+        setJob(nextJob)
+        if (nextJob.status === 'done') {
+          await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
+          await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
+          await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
+        }
+      } catch (error) {
+        setJob({
+          ...job,
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          error: String(error),
+        })
+      }
+    }, 1500)
+
+    return () => window.clearTimeout(timer)
+  }, [job, queryClient])
+
+  async function startJob(runner: () => Promise<SystemJob>) {
+    setJob(await runner())
   }
+
+  const busy = Boolean(job && ['queued', 'running'].includes(job.status))
+  const message = statusText(job)
 
   return (
     <>
@@ -71,9 +101,13 @@ export default function SystemSyncs() {
         <p className="muted">
           Используется для portal data sync и sync yeasts. На сервере не сохраняется.
         </p>
-        {busyAction ? <p className="muted">Идёт синк…</p> : null}
-        {syncMessage ? (
-          <p className={syncMessage.startsWith('Ошибка:') ? 'error' : 'muted'}>{syncMessage}</p>
+        {job ? (
+          <p className="muted">
+            Job: {job.kind} · {job.id}
+          </p>
+        ) : null}
+        {message ? (
+          <p className={message.startsWith('Ошибка:') ? 'error' : 'muted'}>{message}</p>
         ) : null}
       </section>
 
@@ -82,21 +116,16 @@ export default function SystemSyncs() {
           title="Обычный sync"
           description="Базовый синк устройств и активных сессий через обычный RAPT API."
           actionLabel="Запустить"
-          disabled={busyAction !== null}
-          onRun={() => runSync('base', async () => void (await triggerSync()))}
+          disabled={busy}
+          onRun={() => startJob(triggerSync)}
         />
 
         <SyncCard
           title="Portal data sync"
           description="Подтягивает историю profile sessions из portal-only API и обновляет локальные сессии."
           actionLabel="Запустить"
-          disabled={busyAction !== null || !portalToken.trim()}
-          onRun={() =>
-            runSync(
-              'portal',
-              async () => void (await triggerPortalDataSync(portalToken, forcePortalSync)),
-            )
-          }
+          disabled={busy || !portalToken.trim()}
+          onRun={() => startJob(() => triggerPortalDataSync(portalToken, forcePortalSync))}
         >
           <label className="sync-checkbox">
             <input
@@ -112,8 +141,8 @@ export default function SystemSyncs() {
           title="Sync yeasts"
           description="Обновляет локальный каталог дрожжей из portal inventory."
           actionLabel="Запустить"
-          disabled={busyAction !== null || !portalToken.trim()}
-          onRun={() => runSync('yeasts', async () => void (await triggerYeastSync(portalToken)))}
+          disabled={busy || !portalToken.trim()}
+          onRun={() => startJob(() => triggerYeastSync(portalToken))}
         />
       </div>
     </>

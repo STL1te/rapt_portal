@@ -1,11 +1,9 @@
 """Health check and manual sync trigger."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-import sync
-from scripts.portal_data_sync import portal_data_sync
-from scripts.sync_yeasts import sync_yeasts
+from system_jobs import get_job, start_base_sync_job, start_portal_sync_job, start_yeast_sync_job
 
 router = APIRouter()
 
@@ -23,18 +21,24 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@router.post("/api/sync")
+@router.post("/api/sync", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_sync() -> dict:
-    return await sync.sync_once()
+    return await start_base_sync_job()
 
 
-@router.post("/api/portal_data_sync")
+@router.post("/api/portal_data_sync", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_portal_data_sync(payload: PortalSyncRequest) -> dict:
-    await portal_data_sync(force=payload.force, portal_token=payload.portal_token)
-    return {"status": "ok"}
+    return await start_portal_sync_job(payload.portal_token, payload.force)
 
 
-@router.post("/api/sync_yeasts")
-def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
-    count = sync_yeasts(portal_token=payload.portal_token)
-    return {"status": "ok", "count": count}
+@router.post("/api/sync_yeasts", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
+    return await start_yeast_sync_job(payload.portal_token)
+
+
+@router.get("/api/system-jobs/{job_id}")
+def system_job(job_id: str) -> dict:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job

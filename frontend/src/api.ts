@@ -56,6 +56,17 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return r.json()
 }
 
+export type SystemJob = {
+  id: string
+  kind: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  result: Record<string, unknown> | null
+  error: string | null
+}
+
 export type BrewZilla = {
   id: string
   name: string | null
@@ -168,8 +179,9 @@ export const getBrewTelemetry = (sessionId: string) =>
   get<BrewTelemetryPoint[]>(`/api/brew-sessions/${sessionId}/telemetry`)
 
 export const getYeasts = () => get<Yeast[]>('/api/yeasts')
-export const triggerSync = () => post<SyncResult>('/api/sync')
+export const triggerSync = () => post<SystemJob>('/api/sync')
 export const triggerPortalDataSync = (portalToken: string, force = false) =>
-  post<SyncResult>('/api/portal_data_sync', { portal_token: portalToken, force })
+  post<SystemJob>('/api/portal_data_sync', { portal_token: portalToken, force })
 export const triggerYeastSync = (portalToken: string) =>
-  post<SyncResult>('/api/sync_yeasts', { portal_token: portalToken })
+  post<SystemJob>('/api/sync_yeasts', { portal_token: portalToken })
+export const getSystemJob = (jobId: string) => get<SystemJob>(`/api/system-jobs/${jobId}`)

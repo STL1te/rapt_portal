@@ -138,9 +138,23 @@ class BrewTelemetry(Base):
     rssi: Mapped[float | None] = mapped_column(Float)
 
 
+class SystemJob(Base):
+    __tablename__ = "system_jobs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, index=True)
+    status: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(hydrometer_sessions)"))}
         if "yeast_id" not in cols:
             conn.execute(text("ALTER TABLE hydrometer_sessions ADD COLUMN yeast_id VARCHAR"))
+        conn.execute(text("DELETE FROM system_jobs"))
