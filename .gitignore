@@ -1,0 +1,23 @@
+# secrets — never commit
+.env
+**/.env
+.portal_token
+**/.portal_token
+
+# databases
+*.db
+*.db-wal
+*.db-shm
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+dist/
+
+# os
+.DS_Store
+Thumbs.db

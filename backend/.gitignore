@@ -1,0 +1,5 @@
+.env
+.portal_token
+*.db
+__pycache__/
+.venv/

@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env        # RAPT_USERNAME, RAPT_SECRET
+    environment:
+      DATABASE_URL: sqlite:////data/rapt.db
+    volumes:
+      - ./data:/data                 # bind mount: DB lives in the project's ./data folder
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"                    # only public entrypoint; nginx proxies /api -> backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

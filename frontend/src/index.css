@@ -1,0 +1,131 @@
+:root, :root[data-theme="dark"] {
+  --bg: #14161b;
+  --panel: #1c1f27;
+  --border: #2b2f3a;
+  --text: #d5d9e0;
+  --muted: #8a92a0;
+  --accent: #4ea1ff;
+  --accent-bg: rgba(78, 161, 255, 0.15);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --border: #e2e5ea;
+  --text: #1c2029;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-bg: rgba(37, 99, 235, 0.1);
+  color-scheme: light;
+}
+
+:root {
+  font: 15px/1.45 system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+a { color: inherit; text-decoration: none; }
+
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 220px; flex-shrink: 0; padding: 20px 16px;
+  border-right: 1px solid var(--border);
+  position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
+}
+.sidebar nav { display: flex; flex-direction: column; gap: 4px; margin-top: 24px; }
+.sidebar nav a {
+  padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 14px;
+}
+.sidebar nav a:hover { background: var(--panel); color: var(--text); }
+.sidebar nav a.active { background: var(--accent-bg); color: var(--accent); }
+.sidebar nav a i, .brand i { width: 18px; text-align: center; margin-right: 6px; }
+
+.theme-toggle {
+  margin-top: auto; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 14px; cursor: pointer;
+  font-family: inherit;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+main { flex: 1; min-width: 0; padding: 24px 32px 60px; }
+.brand { font-size: 18px; font-weight: 600; }
+h2 { font-size: 18px; margin: 28px 0 12px; }
+h2:first-child { margin-top: 0; }
+.error { color: #ff6b6b; }
+.back { color: var(--muted); display: inline-block; margin-bottom: 16px; cursor: pointer; }
+.back:hover { color: var(--text); }
+
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.page-head h2 { margin: 0; }
+.page-head .dates { color: var(--muted); font-size: 14px; margin-left: auto; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stat {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.stat-label { color: var(--muted); font-size: 12px; }
+.stat-label i { margin-right: 4px; }
+.stat-value { font-size: 22px; font-weight: 600; }
+.stat-sub { color: var(--muted); font-size: 12px; }
+
+.metrics dt i { width: 16px; text-align: center; margin-right: 4px; color: var(--muted); }
+.card-head .name i { color: var(--muted); margin-right: 4px; }
+
+/* recharts: theme-aware legend/tooltip + breathing room between legend items */
+.recharts-legend-item { margin-right: 18px !important; cursor: pointer; }
+.recharts-default-tooltip {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+}
+.recharts-tooltip-label, .recharts-tooltip-item { color: var(--text) !important; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  transition: border-color 0.15s;
+}
+.card:hover { border-color: var(--accent); }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.name { font-weight: 600; }
+
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--border); color: var(--muted); white-space: nowrap;
+}
+.badge.active { background: var(--accent-bg); color: var(--accent); margin-left: 8px; }
+
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 16px 0 0; }
+.metrics dt { color: var(--muted); font-size: 12px; }
+.metrics dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; }
+
+.chart {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 8px 8px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+.row { cursor: pointer; }
+.row:hover { background: var(--panel); }
+.row.selected { background: var(--accent-bg); }
