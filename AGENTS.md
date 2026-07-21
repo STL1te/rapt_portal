@@ -112,6 +112,18 @@ docker compose down
   non-ASCII device names unless stdout is known to be UTF-8; use a safe
   escaped/logging representation when needed.
 
+## Git Workflow
+
+- This repository uses a single-branch workflow on `main`.
+- Do not create feature branches, agent branches, or PR branches unless the
+  user explicitly asks for that workflow.
+- Do not suggest PR creation by default. If the user asks to commit and push,
+  commit to the current working branch and push that branch.
+- Before pushing, verify which branch is checked out and keep the existing
+  repository workflow intact.
+- If a temporary branch is created by mistake, merge or fast-forward the work
+  back to `main` and remove the temporary branch unless the user asks otherwise.
+
 ## Verification Expectations
 
 For backend changes:
