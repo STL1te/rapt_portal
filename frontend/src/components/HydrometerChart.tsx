@@ -4,6 +4,7 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
   ResponsiveContainer,
 } from 'recharts'
+import { temp } from '../fmt'
 import { getTelemetry } from '../api'
 
 export default function HydrometerChart({ sessionId }: { sessionId: string }) {
@@ -48,11 +49,14 @@ export default function HydrometerChart({ sessionId }: { sessionId: string }) {
         <YAxis yAxisId="t" orientation="right" domain={['auto', 'auto']} stroke={C.temperature} />
         {/* velocity has its own scale (S.G. points/day); axis hidden to avoid clutter */}
         <YAxis yAxisId="v" hide domain={['auto', 'auto']} />
-        <Tooltip 
+        <Tooltip
+          allowEscapeViewBox={{ x: false, y: false }}
+          isAnimationActive={false} 
           labelFormatter={(t) => new Date(Number(t)).toLocaleString()}
           formatter={(value, name, item) => {
             if (item.dataKey === 'temperature') {
-              return [`${Number(value).toFixed(1)} °C`, name]
+              const num = value == null ? null : Number(value as any)
+              return [temp(num), name]
             }
 
             return [value, name]
@@ -69,7 +73,7 @@ export default function HydrometerChart({ sessionId }: { sessionId: string }) {
         />
         <Line yAxisId="g" type="monotone" dataKey="gravity" name="Плотность, S.G."
           stroke={C.gravity} dot={false} connectNulls hide={hidden.gravity} />
-        <Line yAxisId="t" type="monotone" dataKey="temperature" name="Температура, °C"
+        <Line yAxisId="t" type="monotone" dataKey="temperature" name="Температура"
           stroke={C.temperature} dot={false} connectNulls hide={hidden.temperature} />
         <Line yAxisId="v" type="monotone" dataKey="velocity" name="Скорость, S.G./день"
           stroke={C.velocity} dot={false} connectNulls strokeDasharray="4 2" hide={hidden.velocity} />

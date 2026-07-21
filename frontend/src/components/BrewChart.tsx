@@ -4,6 +4,7 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
   ResponsiveContainer,
 } from 'recharts'
+import { temp } from '../fmt'
 import { getBrewTelemetry } from '../api'
 
 export default function BrewChart({ sessionId }: { sessionId: string }) {
@@ -44,10 +45,13 @@ export default function BrewChart({ sessionId }: { sessionId: string }) {
           scale="time" tickFormatter={fmtTime} stroke="#888" />
         <YAxis domain={['auto', 'auto']} stroke="#888" unit="°" />
         <Tooltip
+          allowEscapeViewBox={{ x: false, y: false }}
+          isAnimationActive={false} 
           labelFormatter={(t) => new Date(Number(t)).toLocaleString()} 
           formatter={(value, name, item) => {
-            if (item.dataKey === 'temperature' || item.dataKey === 'wort') {
-              return [`${Number(value).toFixed(1)} °C`, name]
+            if (item.dataKey === 'temperature' || item.dataKey === 'wort' || item.dataKey === 'target') {
+              const num = value == null ? null : Number(value as any)
+              return [temp(num), name]
             }
 
             return [value, name]
@@ -62,11 +66,11 @@ export default function BrewChart({ sessionId }: { sessionId: string }) {
             </span>
           )}
         />
-        <Line type="monotone" dataKey="temperature" name="Котёл, °C"
+        <Line type="monotone" dataKey="temperature" name="Котёл"
           stroke={C.temperature} dot={false} connectNulls hide={hidden.temperature} />
-        <Line type="monotone" dataKey="wort" name="Сусло, °C"
+        <Line type="monotone" dataKey="wort" name="Сусло"
           stroke={C.wort} dot={false} connectNulls hide={hidden.wort} />
-        <Line type="monotone" dataKey="target" name="Целевая, °C"
+        <Line type="monotone" dataKey="target" name="Целевая"
           stroke={C.target} dot={false} connectNulls strokeDasharray="4 2" hide={hidden.target} />
         <Brush dataKey="t" height={44} travellerWidth={10}
           stroke={C.temperature} fill="var(--panel)" tickFormatter={fmtBrush}>
