@@ -22,7 +22,13 @@ export default function Hydrometers() {
       <h2>Гидрометры</h2>
       <table>
         <thead>
-          <tr><th>Имя</th><th>Статус</th><th>Плотность</th><th>Температура</th><th>Батарея</th></tr>
+          <tr>
+            <th>Имя</th>
+            <th>Статус</th>
+            <th>Плотность</th>
+            <th>Температура</th>
+            <th>Батарея</th>
+          </tr>
         </thead>
         <tbody>
           {data.map((h) => (

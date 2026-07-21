@@ -12,7 +12,11 @@ export default function HydrometerDetail() {
   const name = hydrometers?.find((h) => h.id === id)?.name
   useTitle(name ?? 'История сессий')
 
-  const { data: sessions, isLoading, error } = useQuery({
+  const {
+    data: sessions,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['sessions', id],
     queryFn: () => getHydrometerSessions(id!),
     enabled: !!id,
@@ -23,7 +27,9 @@ export default function HydrometerDetail() {
 
   return (
     <div>
-      <a className="back" onClick={() => navigate('/hydrometers')}><i className="fa-solid fa-arrow-left" /> Гидрометры</a>
+      <a className="back" onClick={() => navigate('/hydrometers')}>
+        <i className="fa-solid fa-arrow-left" /> Гидрометры
+      </a>
       <h2>{name ? `${name} — история сессий` : 'История сессий'}</h2>
       {!sessions?.length ? (
         <p>Сессий пока нет.</p>
@@ -31,14 +37,27 @@ export default function HydrometerDetail() {
         <table>
           <thead>
             <tr>
-              <th>Сессия</th><th>Старт</th><th>Финиш</th>
-              <th>Длит.</th><th>OG</th><th>FG</th><th>Алк.</th><th>Атт.</th>
+              <th>Сессия</th>
+              <th>Старт</th>
+              <th>Финиш</th>
+              <th>Длит.</th>
+              <th>OG</th>
+              <th>FG</th>
+              <th>Алк.</th>
+              <th>Атт.</th>
             </tr>
           </thead>
           <tbody>
             {sessions.map((s) => (
-              <tr key={s.id} className="row" onClick={() => navigate(`/hydrometer-sessions/${s.id}`)}>
-                <td>{s.name ?? s.id}{s.active && <span className="badge active">активна</span>}</td>
+              <tr
+                key={s.id}
+                className="row"
+                onClick={() => navigate(`/hydrometer-sessions/${s.id}`)}
+              >
+                <td>
+                  {s.name ?? s.id}
+                  {s.active && <span className="badge active">активна</span>}
+                </td>
                 <td>{date(s.start_date)}</td>
                 <td>{s.active ? '—' : date(s.end_date)}</td>
                 <td>{duration(s.start_date, s.end_date)}</td>

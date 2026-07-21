@@ -1,4 +1,5 @@
 """ORM row -> dict serializers shared by the API routers."""
+
 import json
 import statistics
 
@@ -16,7 +17,8 @@ def row(obj) -> dict:
 
 def _current_gravity(db, session_id: str) -> float | None:
     readings = [
-        x for x in db.scalars(
+        x
+        for x in db.scalars(
             select(HydrometerTelemetry.gravity)
             .where(HydrometerTelemetry.session_id == session_id)
             .order_by(HydrometerTelemetry.timestamp)
@@ -25,7 +27,7 @@ def _current_gravity(db, session_id: str) -> float | None:
     ]
     if not readings:
         return None
-    tail = readings[-max(5, len(readings) // 20):]
+    tail = readings[-max(5, len(readings) // 20) :]
     return round(statistics.median(tail), 2)
 
 
@@ -79,7 +81,9 @@ def brew_session_dict(s: BrewSession) -> dict:
     total_steps = len(steps)
     completed_steps = 0
     if current_step_order is not None:
-        completed_steps = len([step for step in steps if (step.get("order") or 0) < current_step_order])
+        completed_steps = len(
+            [step for step in steps if (step.get("order") or 0) < current_step_order]
+        )
     elif not s.active and total_steps:
         completed_steps = total_steps
     d["current_step_id"] = latest.profile_step_id if latest else None
@@ -107,7 +111,9 @@ def brew_session_dict(s: BrewSession) -> dict:
     )
     d["wort_delta_to_target"] = (
         round(latest.control_device_temperature - latest.target_temperature, 1)
-        if latest and latest.control_device_temperature not in (None, 0) and latest.target_temperature is not None
+        if latest
+        and latest.control_device_temperature not in (None, 0)
+        and latest.target_temperature is not None
         else None
     )
     d["step_target_temperature"] = current_step.get("temperature") if current_step else None

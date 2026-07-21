@@ -44,22 +44,24 @@ export default function HydrometerChart({ data }: { data: HydrometerTelemetryPoi
   }))
 
   const end = points[points.length - 1]?.t ?? 0
-  const filteredPoints = range === 'all'
-    ? points
-    : points.filter((point) => point.t >= end - RANGE_MS[range]).length
-      ? points.filter((point) => point.t >= end - RANGE_MS[range])
-      : points
+  const filteredPoints =
+    range === 'all'
+      ? points
+      : points.filter((point) => point.t >= end - RANGE_MS[range]).length
+        ? points.filter((point) => point.t >= end - RANGE_MS[range])
+        : points
 
   const fmtTime = (t: number) => new Date(t).toLocaleDateString()
   const fmtBrush = (t: number) => {
     const d = new Date(t)
     return `${d.getDate()}.${d.getMonth() + 1}`
   }
-  const fmtLegend = (value: string) => ({
-    gravity: 'Плотность',
-    temperature: 'Температура',
-    velocity: 'Скорость, points/day',
-  }[value] ?? value)
+  const fmtLegend = (value: string) =>
+    ({
+      gravity: 'Плотность',
+      temperature: 'Температура',
+      velocity: 'Скорость, points/day',
+    })[value] ?? value
   const C = { gravity: '#e0a93a', temperature: '#4ea1ff', velocity: '#35c28a' }
 
   return (
@@ -101,7 +103,8 @@ export default function HydrometerChart({ data }: { data: HydrometerTelemetryPoi
               const num = value == null ? null : Number(value)
               if (item.dataKey === 'gravity') return [grav(num), 'Плотность'] as const
               if (item.dataKey === 'temperature') return [temp(num), 'Температура'] as const
-              if (item.dataKey === 'velocity') return [num == null ? '—' : `${num.toFixed(1)} points/day`, 'Скорость'] as const
+              if (item.dataKey === 'velocity')
+                return [num == null ? '—' : `${num.toFixed(1)} points/day`, 'Скорость'] as const
               return [String(value ?? '—'), String(item.dataKey ?? '')] as const
             }}
           />
@@ -109,7 +112,11 @@ export default function HydrometerChart({ data }: { data: HydrometerTelemetryPoi
             wrapperStyle={{ paddingTop: 16 }}
             onClick={(e) => toggle(e.dataKey as string)}
             formatter={(value, entry) => (
-              <span style={{ opacity: hidden[(entry as { dataKey?: string })?.dataKey ?? ''] ? 0.4 : 1 }}>
+              <span
+                style={{
+                  opacity: hidden[(entry as { dataKey?: string })?.dataKey ?? ''] ? 0.4 : 1,
+                }}
+              >
                 {fmtLegend(value)}
               </span>
             )}

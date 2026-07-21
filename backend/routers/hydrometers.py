@@ -1,4 +1,5 @@
 """Hydrometer (RAPT Pill) devices, sessions and telemetry."""
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 

@@ -14,7 +14,11 @@ export default function BrewZillaDetail() {
   const name = brewzillas?.find((b) => b.id === id)?.name
   useTitle(name ?? 'Пивоварня')
 
-  const { data: sessions, isLoading, error } = useQuery({
+  const {
+    data: sessions,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['brew-sessions', id, includeShort],
     queryFn: () => getBrewSessions(id!, includeShort),
     enabled: !!id,
@@ -25,7 +29,9 @@ export default function BrewZillaDetail() {
 
   return (
     <div>
-      <a className="back" onClick={() => navigate('/')}><i className="fa-solid fa-arrow-left" /> Дашборд</a>
+      <a className="back" onClick={() => navigate('/')}>
+        <i className="fa-solid fa-arrow-left" /> Дашборд
+      </a>
       <h2>{name ? `${name} — история варок` : 'История варок'}</h2>
       <div className="chart-toolbar">
         <span className="chart-toolbar-label">Показывать короткие варки &lt; 1 часа</span>
@@ -44,12 +50,20 @@ export default function BrewZillaDetail() {
       ) : (
         <table>
           <thead>
-            <tr><th>Профиль</th><th>Старт</th><th>Финиш</th><th>Длит.</th></tr>
+            <tr>
+              <th>Профиль</th>
+              <th>Старт</th>
+              <th>Финиш</th>
+              <th>Длит.</th>
+            </tr>
           </thead>
           <tbody>
             {sessions.map((s) => (
               <tr key={s.id} className="row" onClick={() => navigate(`/brew-sessions/${s.id}`)}>
-                <td>{s.name ?? s.id}{s.active && <span className="badge active">варит</span>}</td>
+                <td>
+                  {s.name ?? s.id}
+                  {s.active && <span className="badge active">варит</span>}
+                </td>
                 <td>{date(s.start_date)}</td>
                 <td>{s.active ? '—' : date(s.end_date)}</td>
                 <td>{durationHm(s.start_date, s.end_date)}</td>

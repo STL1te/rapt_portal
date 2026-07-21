@@ -20,7 +20,9 @@ function MetricCard({
 }) {
   return (
     <div className={tone ? `stat stat-${tone}` : 'stat'}>
-      <span className="stat-label"><i className={icon} /> {label}</span>
+      <span className="stat-label">
+        <i className={icon} /> {label}
+      </span>
       <span className="stat-value">{value}</span>
       {sub && <span className="stat-sub">{sub}</span>}
     </div>
@@ -37,7 +39,11 @@ export default function BrewSessionPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const { data: s, isLoading, error } = useQuery({
+  const {
+    data: s,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['brew-session', id],
     queryFn: () => getBrewSession(id!),
     enabled: !!id,
@@ -57,50 +63,78 @@ export default function BrewSessionPage() {
   const delta = s.delta_to_target
   const wortDelta = s.wort_delta_to_target
   const latestTemp = s.latest_temperature
-  const latestWort = s.latest_wort_temperature && s.latest_wort_temperature > 0 ? s.latest_wort_temperature : null
+  const latestWort =
+    s.latest_wort_temperature && s.latest_wort_temperature > 0 ? s.latest_wort_temperature : null
 
-  const tempTone = delta == null
-    ? 'quiet'
-    : Math.abs(delta) <= 0.5
-      ? 'ok'
-      : Math.abs(delta) <= 2
-        ? 'info'
-        : 'warn'
-  const wortTone = wortDelta == null
-    ? 'quiet'
-    : Math.abs(wortDelta) <= 1
-      ? 'ok'
-      : Math.abs(wortDelta) <= 3
-        ? 'info'
-        : 'warn'
+  const tempTone =
+    delta == null ? 'quiet' : Math.abs(delta) <= 0.5 ? 'ok' : Math.abs(delta) <= 2 ? 'info' : 'warn'
+  const wortTone =
+    wortDelta == null
+      ? 'quiet'
+      : Math.abs(wortDelta) <= 1
+        ? 'ok'
+        : Math.abs(wortDelta) <= 3
+          ? 'info'
+          : 'warn'
 
   const status = !s.active
-    ? { tone: 'done', title: 'Варка завершена', body: 'Сессия закрыта, финальные точки уже сохранены.' }
+    ? {
+        tone: 'done',
+        title: 'Варка завершена',
+        body: 'Сессия закрыта, финальные точки уже сохранены.',
+      }
     : currentStepOrder == null
-      ? { tone: 'quiet', title: 'Нет активного шага', body: 'Сессия активна, но BrewZilla пока не отдала текущий шаг профиля.' }
+      ? {
+          tone: 'quiet',
+          title: 'Нет активного шага',
+          body: 'Сессия активна, но BrewZilla пока не отдала текущий шаг профиля.',
+        }
       : delta != null && Math.abs(delta) <= 0.5
-        ? { tone: 'active', title: 'Температура держится в цели', body: `Сейчас идёт шаг «${s.current_step_name ?? `#${currentStepOrder + 1}`}».` }
+        ? {
+            tone: 'active',
+            title: 'Температура держится в цели',
+            body: `Сейчас идёт шаг «${s.current_step_name ?? `#${currentStepOrder + 1}`}».`,
+          }
         : delta != null && delta < -0.5
-          ? { tone: 'steady', title: 'Идёт догрев', body: `Котёл пока ниже цели на ${Math.abs(delta).toFixed(1)}°C.` }
+          ? {
+              tone: 'steady',
+              title: 'Идёт догрев',
+              body: `Котёл пока ниже цели на ${Math.abs(delta).toFixed(1)}°C.`,
+            }
           : delta != null && delta > 1.5
-            ? { tone: 'quiet', title: 'Выше цели', body: `Котёл выше target на ${delta.toFixed(1)}°C, стоит проверить шаг и автоматику.` }
-            : { tone: 'steady', title: 'Шаг выполняется', body: `Профиль идёт, но температура ещё не стабилизировалась у цели.` }
+            ? {
+                tone: 'quiet',
+                title: 'Выше цели',
+                body: `Котёл выше target на ${delta.toFixed(1)}°C, стоит проверить шаг и автоматику.`,
+              }
+            : {
+                tone: 'steady',
+                title: 'Шаг выполняется',
+                body: `Профиль идёт, но температура ещё не стабилизировалась у цели.`,
+              }
 
   const progressLabel = sessionProgress == null ? '—' : pct(sessionProgress * 100)
-  const currentStepIndex = currentStepOrder == null ? null : steps.findIndex((step) => step.order === currentStepOrder)
+  const currentStepIndex =
+    currentStepOrder == null ? null : steps.findIndex((step) => step.order === currentStepOrder)
 
   return (
     <div>
-      <a className="back" onClick={() => navigate(`/brewzillas/${s.brewzilla_id}`)}><i className="fa-solid fa-arrow-left" /> К пивоварне</a>
+      <a className="back" onClick={() => navigate(`/brewzillas/${s.brewzilla_id}`)}>
+        <i className="fa-solid fa-arrow-left" /> К пивоварне
+      </a>
       <div className="page-head">
         <h2>{s.name ?? s.id}</h2>
         {s.active && <span className="badge active">варит</span>}
-        <span className="dates">{date(s.start_date)} — {s.active ? 'сейчас' : date(s.end_date)}</span>
+        <span className="dates">
+          {date(s.start_date)} — {s.active ? 'сейчас' : date(s.end_date)}
+        </span>
       </div>
 
       <section className="session-hero">
         <article className={`hero-card hero-status ${status.tone}`}>
-          <div className="hero-label"><i className="fa-solid fa-wave-square" /> Статус варки</div>
+          <div className="hero-label">
+            <i className="fa-solid fa-wave-square" /> Статус варки
+          </div>
           <div className="hero-title">{status.title}</div>
           <div className="hero-body">{status.body}</div>
           <div className="hero-meta">
@@ -110,7 +144,9 @@ export default function BrewSessionPage() {
         </article>
 
         <article className="hero-card">
-          <div className="hero-label"><i className="fa-solid fa-list-check" /> Текущий шаг</div>
+          <div className="hero-label">
+            <i className="fa-solid fa-list-check" /> Текущий шаг
+          </div>
           <div className="hero-title">{s.current_step_name ?? '—'}</div>
           <div className="hero-body">
             {currentStepOrder == null
@@ -119,12 +155,17 @@ export default function BrewSessionPage() {
           </div>
           <div className="hero-meta">
             <span>Цель {temp(target)}</span>
-            <span>Длит. {currentStepIndex == null ? '—' : stepLen(steps[currentStepIndex]?.length ?? null)}</span>
+            <span>
+              Длит.{' '}
+              {currentStepIndex == null ? '—' : stepLen(steps[currentStepIndex]?.length ?? null)}
+            </span>
           </div>
         </article>
 
         <article className="hero-card">
-          <div className="hero-label"><i className="fa-solid fa-temperature-three-quarters" /> Температурный контроль</div>
+          <div className="hero-label">
+            <i className="fa-solid fa-temperature-three-quarters" /> Температурный контроль
+          </div>
           <div className="hero-title">{fmtDelta(delta)}</div>
           <div className="hero-body">Показываем отклонение котла от target.</div>
           <div className="hero-meta">
@@ -145,7 +186,11 @@ export default function BrewSessionPage() {
         <MetricCard
           label="Отклонение котла"
           value={fmtDelta(delta)}
-          sub={s.last_telemetry_at ? `обновлено ${new Date(s.last_telemetry_at).toLocaleString()}` : 'нет telemetry'}
+          sub={
+            s.last_telemetry_at
+              ? `обновлено ${new Date(s.last_telemetry_at).toLocaleString()}`
+              : 'нет telemetry'
+          }
           icon="fa-solid fa-bullseye"
           tone={tempTone}
         />
@@ -165,7 +210,9 @@ export default function BrewSessionPage() {
         <MetricCard
           label="Нагрев всего"
           value={stepLen(s.latest_heating_run_time)}
-          sub={s.latest_aux_run_time == null ? undefined : `помпа ${stepLen(s.latest_aux_run_time)}`}
+          sub={
+            s.latest_aux_run_time == null ? undefined : `помпа ${stepLen(s.latest_aux_run_time)}`
+          }
           icon="fa-solid fa-bolt"
         />
         <MetricCard
@@ -184,14 +231,23 @@ export default function BrewSessionPage() {
           <h2>Профиль варки</h2>
           <table>
             <thead>
-              <tr><th>#</th><th>Шаг</th><th>Температура</th><th>Длит.</th><th>Нагрев</th><th>Статус</th></tr>
+              <tr>
+                <th>#</th>
+                <th>Шаг</th>
+                <th>Температура</th>
+                <th>Длит.</th>
+                <th>Нагрев</th>
+                <th>Статус</th>
+              </tr>
             </thead>
             <tbody>
               {steps.map((st) => {
                 const isCurrent = currentStepOrder != null && st.order === currentStepOrder
                 const isDone = currentStepOrder != null ? st.order < currentStepOrder : !s.active
                 const statusLabel = isCurrent
-                  ? (currentStepProgress == null ? 'идёт' : `${pct(currentStepProgress * 100)} шага`)
+                  ? currentStepProgress == null
+                    ? 'идёт'
+                    : `${pct(currentStepProgress * 100)} шага`
                   : isDone
                     ? 'пройден'
                     : 'в очереди'

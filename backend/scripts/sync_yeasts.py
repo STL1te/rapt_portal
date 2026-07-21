@@ -3,20 +3,23 @@
 Usage (from backend/):
   uv run python scripts/sync_yeasts.py
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import sync
 from config import API_BASE
 from db import SessionLocal, Yeast, init_db
-import sync
 
 
 def _load_token() -> str:
-    tok = Path(".portal_token").read_text(encoding="utf-8") if Path(".portal_token").exists() else ""
+    tok = (
+        Path(".portal_token").read_text(encoding="utf-8") if Path(".portal_token").exists() else ""
+    )
     return tok.removeprefix("Bearer ").strip()
 
 
@@ -52,21 +55,25 @@ def sync_yeasts() -> int:
 
             with SessionLocal() as db:
                 for item in items:
-                    sync._upsert(db, Yeast, {
-                        "id": item["id"],
-                        "name": item.get("name"),
-                        "product_id": item.get("productId"),
-                        "laboratory": item.get("laboratory"),
-                        "type": item.get("type"),
-                        "form": item.get("form"),
-                        "min_temperature": item.get("minTemperature"),
-                        "max_temperature": item.get("maxTemperature"),
-                        "flocculation": item.get("flocculation"),
-                        "attenuation": item.get("attenuation"),
-                        "notes": item.get("notes"),
-                        "is_global": bool(item.get("isGlobal")),
-                        "archived": bool(item.get("archived")),
-                    })
+                    sync._upsert(
+                        db,
+                        Yeast,
+                        {
+                            "id": item["id"],
+                            "name": item.get("name"),
+                            "product_id": item.get("productId"),
+                            "laboratory": item.get("laboratory"),
+                            "type": item.get("type"),
+                            "form": item.get("form"),
+                            "min_temperature": item.get("minTemperature"),
+                            "max_temperature": item.get("maxTemperature"),
+                            "flocculation": item.get("flocculation"),
+                            "attenuation": item.get("attenuation"),
+                            "notes": item.get("notes"),
+                            "is_global": bool(item.get("isGlobal")),
+                            "archived": bool(item.get("archived")),
+                        },
+                    )
                 db.commit()
 
             total += len(items)

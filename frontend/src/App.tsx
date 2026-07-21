@@ -14,12 +14,22 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand"><img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal</div>
+        <div className="brand">
+          <img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal
+        </div>
         <nav>
-          <NavLink to="/" end><i className="fa-solid fa-gauge-high" /> Дашборд</NavLink>
-          <NavLink to="/hydrometers"><i className="fa-solid fa-flask" /> Гидрометры</NavLink>
-          <NavLink to="/brewzillas"><i className="fa-solid fa-fire-burner" /> Пивоварни</NavLink>
-          <NavLink to="/yeasts"><i className="fa-solid fa-vial" /> Дрожжи</NavLink>
+          <NavLink to="/" end>
+            <i className="fa-solid fa-gauge-high" /> Дашборд
+          </NavLink>
+          <NavLink to="/hydrometers">
+            <i className="fa-solid fa-flask" /> Гидрометры
+          </NavLink>
+          <NavLink to="/brewzillas">
+            <i className="fa-solid fa-fire-burner" /> Пивоварни
+          </NavLink>
+          <NavLink to="/yeasts">
+            <i className="fa-solid fa-vial" /> Дрожжи
+          </NavLink>
         </nav>
         <ThemeToggle />
       </aside>

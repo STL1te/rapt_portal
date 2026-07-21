@@ -22,7 +22,13 @@ export default function Brewzillas() {
       <h2>Пивоварни</h2>
       <table>
         <thead>
-          <tr><th>Имя</th><th>Статус</th><th>Температура</th><th>Цель</th><th>Нагрев</th></tr>
+          <tr>
+            <th>Имя</th>
+            <th>Статус</th>
+            <th>Температура</th>
+            <th>Цель</th>
+            <th>Нагрев</th>
+          </tr>
         </thead>
         <tbody>
           {data.map((b) => (

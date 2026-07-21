@@ -134,36 +134,20 @@ export type Yeast = {
   archived: boolean
 }
 
-export const getHydrometers = () =>
-  get<Hydrometer[]>('/api/hydrometers')
-export const getHydrometerSessions = (
-  hydrometerId: string,
-) =>
+export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
+export const getHydrometerSessions = (hydrometerId: string) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
-export const getHydrometerSession = (
-  sessionId: string,
-) =>
+export const getHydrometerSession = (sessionId: string) =>
   get<Session>(`/api/hydrometer-sessions/${sessionId}`)
-export const getHydrometerTelemetry = (
-  sessionId: string,
-) =>
+export const getHydrometerTelemetry = (sessionId: string) =>
   get<HydrometerTelemetryPoint[]>(`/api/hydrometer-sessions/${sessionId}/telemetry`)
 
-export const getBrewzillas = () =>
-  get<BrewZilla[]>('/api/brewzillas')
-export const getBrewSessions = (
-  brewzillaId: string,
-  includeShort = false,
-) =>
+export const getBrewzillas = () => get<BrewZilla[]>('/api/brewzillas')
+export const getBrewSessions = (brewzillaId: string, includeShort = false) =>
   get<BrewSession[]>(`/api/brewzillas/${brewzillaId}/sessions?include_short=${includeShort}`)
-export const getBrewSession = (
-  sessionId: string,
-) =>
+export const getBrewSession = (sessionId: string) =>
   get<BrewSession>(`/api/brew-sessions/${sessionId}`)
-export const getBrewTelemetry = (
-  sessionId: string,
-) =>
+export const getBrewTelemetry = (sessionId: string) =>
   get<BrewTelemetryPoint[]>(`/api/brew-sessions/${sessionId}/telemetry`)
 
-export const getYeasts = () =>
-  get<Yeast[]>('/api/yeasts')
+export const getYeasts = () => get<Yeast[]>('/api/yeasts')

@@ -1,4 +1,5 @@
 """Health check and manual sync trigger."""
+
 from fastapi import APIRouter
 
 import sync

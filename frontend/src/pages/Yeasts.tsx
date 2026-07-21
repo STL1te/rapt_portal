@@ -14,12 +14,10 @@ const SORT_OPTIONS = [
   { value: 'temperature', label: 'Температура' },
 ] as const
 
-type SortKey = typeof SORT_OPTIONS[number]['value']
+type SortKey = (typeof SORT_OPTIONS)[number]['value']
 
 function normalizeSearch(value: string) {
-  return value
-    .toLocaleLowerCase()
-    .replace(/[^a-zа-яё0-9]+/gi, '')
+  return value.toLocaleLowerCase().replace(/[^a-zа-яё0-9]+/gi, '')
 }
 
 function yeastSearchText(yeast: Yeast) {
@@ -59,7 +57,15 @@ function getPageTokens(currentPage: number, totalPages: number): Array<number | 
   }
 
   if (currentPage >= totalPages - 3) {
-    return [1, 'ellipsis', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+    return [
+      1,
+      'ellipsis',
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ]
   }
 
   return [1, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', totalPages]
@@ -97,11 +103,21 @@ export default function Yeasts() {
   })
 
   const typeOptions = useMemo(
-    () => Array.from(new Set((data ?? []).map((item) => item.type).filter((value): value is string => Boolean(value)))).sort(),
+    () =>
+      Array.from(
+        new Set(
+          (data ?? []).map((item) => item.type).filter((value): value is string => Boolean(value)),
+        ),
+      ).sort(),
     [data],
   )
   const formOptions = useMemo(
-    () => Array.from(new Set((data ?? []).map((item) => item.form).filter((value): value is string => Boolean(value)))).sort(),
+    () =>
+      Array.from(
+        new Set(
+          (data ?? []).map((item) => item.form).filter((value): value is string => Boolean(value)),
+        ),
+      ).sort(),
     [data],
   )
 
@@ -127,7 +143,8 @@ export default function Yeasts() {
           result = compareNumber(a.attenuation, b.attenuation) || compareText(a.name, b.name)
           break
         case 'temperature':
-          result = compareNumber(a.min_temperature, b.min_temperature) || compareText(a.name, b.name)
+          result =
+            compareNumber(a.min_temperature, b.min_temperature) || compareText(a.name, b.name)
           break
         case 'laboratory':
         default:
@@ -146,7 +163,10 @@ export default function Yeasts() {
     const start = (currentPage - 1) * PAGE_SIZE
     return filtered.slice(start, start + PAGE_SIZE)
   }, [currentPage, filtered])
-  const pageTokens = useMemo(() => getPageTokens(currentPage, totalPages), [currentPage, totalPages])
+  const pageTokens = useMemo(
+    () => getPageTokens(currentPage, totalPages),
+    [currentPage, totalPages],
+  )
 
   if (isLoading) return <p>Загрузка…</p>
   if (error) return <p className="error">Ошибка: {String(error)}</p>
@@ -182,7 +202,11 @@ export default function Yeasts() {
               }}
             >
               <option value="all">Все</option>
-              {typeOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+              {typeOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -196,7 +220,11 @@ export default function Yeasts() {
               }}
             >
               <option value="all">Все</option>
-              {formOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+              {formOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -210,7 +238,9 @@ export default function Yeasts() {
               }}
             >
               {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </label>
@@ -247,7 +277,11 @@ export default function Yeasts() {
               </thead>
               <tbody>
                 {pageItems.map((yeast) => (
-                  <tr key={yeast.id} className="row" onClick={() => navigate(`/yeasts/${yeast.id}`)}>
+                  <tr
+                    key={yeast.id}
+                    className="row"
+                    onClick={() => navigate(`/yeasts/${yeast.id}`)}
+                  >
                     <td>
                       <div className="table-title">{yeast.name ?? yeast.id}</div>
                       <div className="table-subtitle">{yeast.product_id ?? yeast.id}</div>
@@ -267,12 +301,18 @@ export default function Yeasts() {
                 {filtered.length} записей · страница {currentPage} из {totalPages}
               </span>
               <div className="pagination-actions">
-                <button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
                   Назад
                 </button>
-                {pageTokens.map((token, index) => (
+                {pageTokens.map((token, index) =>
                   token === 'ellipsis' ? (
-                    <span key={`ellipsis-${index}`} className="pagination-ellipsis">…</span>
+                    <span key={`ellipsis-${index}`} className="pagination-ellipsis">
+                      …
+                    </span>
                   ) : (
                     <button
                       key={token}
@@ -282,9 +322,13 @@ export default function Yeasts() {
                     >
                       {token}
                     </button>
-                  )
-                ))}
-                <button type="button" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+                  ),
+                )}
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                >
                   Далее
                 </button>
               </div>

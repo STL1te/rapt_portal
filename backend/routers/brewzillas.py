@@ -1,4 +1,5 @@
 """BrewZilla devices, brew sessions and telemetry."""
+
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
@@ -10,6 +11,7 @@ from serializers import brew_session_dict, row
 router = APIRouter()
 _SHORT_BREW_SESSION = timedelta(hours=1)
 _BREW_GAP_CUTOFF = timedelta(hours=4)
+
 
 def _is_short_brew_session(s: BrewSession) -> bool:
     if not s.start_date:

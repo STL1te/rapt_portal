@@ -1,8 +1,8 @@
 """SQLAlchemy models and session factory."""
+
 from datetime import datetime
 
 from sqlalchemy import (
-    text,
     Boolean,
     DateTime,
     Float,
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -107,7 +108,9 @@ class BrewSession(Base):
     brewzilla_id: Mapped[str] = mapped_column(String, index=True)
     name: Mapped[str | None] = mapped_column(String)
     profile_id: Mapped[str | None] = mapped_column(String)
-    profile_json: Mapped[str | None] = mapped_column(Text)  # embedded profile: name, steps[], alerts
+    profile_json: Mapped[str | None] = mapped_column(
+        Text
+    )  # embedded profile: name, steps[], alerts
     start_date: Mapped[datetime | None] = mapped_column(DateTime)
     end_date: Mapped[datetime | None] = mapped_column(DateTime)
     active: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -13,7 +13,10 @@ export default function ThemeToggle() {
   }, [theme])
 
   return (
-    <button className="theme-toggle" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>
+    <button
+      className="theme-toggle"
+      onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+    >
       <i className={theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon'} />
       {theme === 'dark' ? 'Светлая' : 'Тёмная'}
     </button>

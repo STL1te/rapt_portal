@@ -14,6 +14,7 @@ Usage (from backend/):
   PORTAL_TOKEN="eyJ..." uv run python -m scripts.portal_data_sync
   PORTAL_TOKEN="eyJ..." uv run python -m scripts.portal_data_sync --force
 """
+
 import argparse
 import asyncio
 import os
@@ -95,22 +96,27 @@ async def portal_data_sync(force: bool = False) -> None:
         for h in hydrometers:
             hid = h["id"]
             sessions = await _list_sessions(
-                client, "GetHydrometerProfileSessions", "hydrometerId", hid)
+                client, "GetHydrometerProfileSessions", "hydrometerId", hid
+            )
             print(f"{_safe_name(h.get('name'))}: {len(sessions)} session(s)")
             for s in sessions:
                 sid = s["id"]
                 end = sync._dt(s.get("endDate"))
                 with SessionLocal() as db:
                     is_new = _is_new(db, HydrometerSession, sid)
-                    sync._upsert(db, HydrometerSession, {
-                        "id": sid,
-                        "hydrometer_id": hid,
-                        "name": s.get("name"),
-                        "yeast_id": s.get("yeastId"),
-                        "start_date": sync._dt(s.get("startDate")),
-                        "end_date": end,
-                        "active": end is None,
-                    })
+                    sync._upsert(
+                        db,
+                        HydrometerSession,
+                        {
+                            "id": sid,
+                            "hydrometer_id": hid,
+                            "name": s.get("name"),
+                            "yeast_id": s.get("yeastId"),
+                            "start_date": sync._dt(s.get("startDate")),
+                            "end_date": end,
+                            "active": end is None,
+                        },
+                    )
                     db.commit()
                 if is_new or force:
                     await sync._sync_telemetry(hid, sid)
@@ -120,10 +126,16 @@ async def portal_data_sync(force: bool = False) -> None:
         await _sync_brewzillas(client, force=force)
 
     with SessionLocal() as db:
-        print("DB totals -> hydro sessions:", db.scalar(select(func.count(HydrometerSession.id))),
-              "| hydro telemetry:", db.scalar(select(func.count(HydrometerTelemetry.id))),
-              "| brew sessions:", db.scalar(select(func.count(BrewSession.id))),
-              "| brew telemetry:", db.scalar(select(func.count(BrewTelemetry.id))))
+        print(
+            "DB totals -> hydro sessions:",
+            db.scalar(select(func.count(HydrometerSession.id))),
+            "| hydro telemetry:",
+            db.scalar(select(func.count(HydrometerTelemetry.id))),
+            "| brew sessions:",
+            db.scalar(select(func.count(BrewSession.id))),
+            "| brew telemetry:",
+            db.scalar(select(func.count(BrewTelemetry.id))),
+        )
 
 
 async def _sync_brewzillas(client: httpx.AsyncClient, force: bool = False) -> None:
@@ -131,8 +143,7 @@ async def _sync_brewzillas(client: httpx.AsyncClient, force: bool = False) -> No
 
     for b in await rapt_client.get_brewzillas():
         bid = b["id"]
-        sessions = await _list_sessions(
-            client, "GetBrewZillaProfileSessions", "brewZillaId", bid)
+        sessions = await _list_sessions(client, "GetBrewZillaProfileSessions", "brewZillaId", bid)
         print(f"{_safe_name(b.get('name'))}: {len(sessions)} brew session(s)")
         for s in sessions:
             sid = s["id"]
@@ -140,16 +151,20 @@ async def _sync_brewzillas(client: httpx.AsyncClient, force: bool = False) -> No
             prof = s.get("profile")
             with SessionLocal() as db:
                 is_new = _is_new(db, BrewSession, sid)
-                sync._upsert(db, BrewSession, {
-                    "id": sid,
-                    "brewzilla_id": bid,
-                    "name": (prof or {}).get("name"),
-                    "profile_id": s.get("profileId"),
-                    "profile_json": json.dumps(prof, ensure_ascii=False) if prof else None,
-                    "start_date": sync._dt(s.get("startDate")),
-                    "end_date": end,
-                    "active": end is None,
-                })
+                sync._upsert(
+                    db,
+                    BrewSession,
+                    {
+                        "id": sid,
+                        "brewzilla_id": bid,
+                        "name": (prof or {}).get("name"),
+                        "profile_id": s.get("profileId"),
+                        "profile_json": json.dumps(prof, ensure_ascii=False) if prof else None,
+                        "start_date": sync._dt(s.get("startDate")),
+                        "end_date": end,
+                        "active": end is None,
+                    },
+                )
                 db.commit()
             if is_new or force:
                 await sync._sync_brew_telemetry(bid, sid)

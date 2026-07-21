@@ -23,7 +23,9 @@ function renderTempRange(min: number | null, max: number | null) {
 function stat(label: string, value: string, icon: StatIcon) {
   return (
     <article className="detail-card">
-      <div className="detail-label"><i className={`fa-solid ${icon}`} /> {label}</div>
+      <div className="detail-label">
+        <i className={`fa-solid ${icon}`} /> {label}
+      </div>
       <div className="detail-value">{value}</div>
     </article>
   )
@@ -45,7 +47,9 @@ export default function YeastDetail() {
   if (!yeast) {
     return (
       <div>
-        <a className="back" onClick={() => navigate('/yeasts')}><i className="fa-solid fa-arrow-left" /> Дрожжи</a>
+        <a className="back" onClick={() => navigate('/yeasts')}>
+          <i className="fa-solid fa-arrow-left" /> Дрожжи
+        </a>
         <p>Штамм не найден.</p>
       </div>
     )
@@ -53,13 +57,16 @@ export default function YeastDetail() {
 
   return (
     <div>
-      <a className="back" onClick={() => navigate('/yeasts')}><i className="fa-solid fa-arrow-left" /> Дрожжи</a>
+      <a className="back" onClick={() => navigate('/yeasts')}>
+        <i className="fa-solid fa-arrow-left" /> Дрожжи
+      </a>
 
       <div className="page-head">
         <div>
           <h2>{yeast.name ?? yeast.id}</h2>
           <div className="muted">
-            {yeast.laboratory ?? 'Без лаборатории'}{yeast.product_id ? ` · ${yeast.product_id}` : ''}
+            {yeast.laboratory ?? 'Без лаборатории'}
+            {yeast.product_id ? ` · ${yeast.product_id}` : ''}
           </div>
         </div>
         <div className="detail-badges">
@@ -74,14 +81,24 @@ export default function YeastDetail() {
         {stat('Код продукта', yeast.product_id ?? '—', 'fa-hashtag')}
         {stat('Тип', yeast.type ?? '—', 'fa-tag')}
         {stat('Форма', yeast.form ?? '—', 'fa-box')}
-        {stat('Температурный диапазон', renderTempRange(yeast.min_temperature, yeast.max_temperature), 'fa-temperature-half')}
-        {stat('Аттенюация', yeast.attenuation == null ? '—' : `${Math.round(yeast.attenuation)}%`, 'fa-percent')}
+        {stat(
+          'Температурный диапазон',
+          renderTempRange(yeast.min_temperature, yeast.max_temperature),
+          'fa-temperature-half',
+        )}
+        {stat(
+          'Аттенюация',
+          yeast.attenuation == null ? '—' : `${Math.round(yeast.attenuation)}%`,
+          'fa-percent',
+        )}
         {stat('Флокуляция', yeast.flocculation ?? '—', 'fa-cloud')}
         {stat('Статус', yeast.archived ? 'Archived' : 'Active', 'fa-toggle-on')}
       </section>
 
       <section className="panel">
-        <h3 className="panel-title"><i className="fa-solid fa-note-sticky" /> Описание</h3>
+        <h3 className="panel-title">
+          <i className="fa-solid fa-note-sticky" /> Описание
+        </h3>
         <p className="detail-notes">{yeast.notes?.trim() || 'Описание не заполнено.'}</p>
       </section>
     </div>

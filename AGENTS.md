@@ -73,6 +73,8 @@ Frontend:
 ```bash
 cd frontend
 npm install
+npm run fmt
+npm run fmt:check
 npm run dev
 npm run build
 npm run lint
@@ -113,6 +115,13 @@ docker compose down
   escaped/logging representation when needed.
 - The shell here is PowerShell. Do not use `&&` as a command separator; run
   commands separately or use PowerShell-valid control flow.
+- Before committing code changes, run the project formatter for the touched
+  stack:
+  - frontend: `npm run fmt`
+  - backend: `uv run ruff format .` and `uv run ruff check . --fix`
+- Before build or final verification, run format checks for the touched stack:
+  - frontend: `npm run fmt:check`
+  - backend: `uv run ruff format --check .` and `uv run ruff check .`
 
 ## Git Workflow
 
@@ -121,6 +130,9 @@ docker compose down
   user explicitly asks for that workflow.
 - Do not suggest PR creation by default. If the user asks to commit and push,
   commit to the current working branch and push that branch.
+- Do not run `git` operations that mutate repository state in parallel. In
+  particular, do not parallelize any combination of `git add`, `git commit`,
+  `git merge`, `git rebase`, `git push`, or `git checkout` / `git switch`.
 - Before pushing, verify which branch is checked out and keep the existing
   repository workflow intact.
 - If a temporary branch is created by mistake, merge or fast-forward the work
@@ -130,6 +142,8 @@ docker compose down
 
 For backend changes:
 
+- Run `uv run ruff format --check .` and `uv run ruff check .` before commit
+  and before handoff.
 - Run `uv run python scripts/test_gravities.py` if gravity/session logic changed.
 - Run or smoke-check `uv run uvicorn app:app --reload` when route wiring or app
   startup changes.
@@ -138,6 +152,7 @@ For backend changes:
 
 For frontend changes:
 
+- Run `npm run fmt:check` before commit and before handoff.
 - Run `npm run build` for TypeScript and production build validation.
 - Run `npm run lint` when changing TypeScript/React code.
 - Check responsive layout manually for page or chart changes.

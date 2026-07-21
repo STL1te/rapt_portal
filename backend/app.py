@@ -1,4 +1,5 @@
 """FastAPI app: serves cached RAPT data from the local DB, runs a background sync."""
+
 import asyncio
 import contextlib
 from contextlib import asynccontextmanager
@@ -18,8 +19,11 @@ async def _sync_loop() -> None:
         try:
             r = await sync.sync_once()
             ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            print(f"[{ts}] synced {r['hydrometers']} hydrometers, "
-                  f"{r['active_sessions']} active session(s)", flush=True)
+            print(
+                f"[{ts}] synced {r['hydrometers']} hydrometers, "
+                f"{r['active_sessions']} active session(s)",
+                flush=True,
+            )
         except Exception as e:  # noqa: BLE001 — never let the loop die
             print(f"sync error: {e}", flush=True)
         await asyncio.sleep(SYNC_INTERVAL_SECONDS)

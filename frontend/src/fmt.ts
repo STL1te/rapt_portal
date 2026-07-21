@@ -1,8 +1,7 @@
 export const grav = (n: number | null) => (n == null ? '—' : n.toFixed(1))
 
 // density conversions from RAPT "points" (e.g. 1048.4 -> SG 1.0484)
-export const sg = (points: number | null) =>
-  points == null ? '—' : (points / 1000).toFixed(3)
+export const sg = (points: number | null) => (points == null ? '—' : (points / 1000).toFixed(3))
 
 export const brix = (points: number | null) => {
   if (points == null) return '—'
@@ -13,8 +12,7 @@ export const brix = (points: number | null) => {
 export const temp = (n: number | null) => (n == null ? '—' : `${n.toFixed(1)}°C`)
 export const pct = (n: number | null) => (n == null ? '—' : `${Math.round(n)}%`)
 export const dbm = (n: number | null) => (n == null ? '—' : `${Math.round(n)} dBm`)
-export const date = (s: string | null) =>
-  s ? new Date(s).toLocaleDateString() : '—'
+export const date = (s: string | null) => (s ? new Date(s).toLocaleDateString() : '—')
 
 export function stepLen(seconds: number | null): string {
   if (seconds == null) return '—'
@@ -33,6 +31,9 @@ export function duration(start: string | null, end: string | null): string {
 
 export function durationHm(start: string | null, end: string | null): string {
   if (!start) return '—'
-  const seconds = Math.max(0, Math.round(((end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()) / 1000))
+  const seconds = Math.max(
+    0,
+    Math.round(((end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()) / 1000),
+  )
   return stepLen(seconds)
 }

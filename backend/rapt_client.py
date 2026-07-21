@@ -1,4 +1,5 @@
 """Thin async RAPT API client with in-memory token cache."""
+
 import asyncio
 import time
 
@@ -46,7 +47,7 @@ async def get(path: str, params: dict | None = None) -> object:
                 headers={"Authorization": f"Bearer {token}"},
             )
             if resp.status_code == 429:
-                wait = float(resp.headers.get("Retry-After", 2 ** attempt))
+                wait = float(resp.headers.get("Retry-After", 2**attempt))
                 await asyncio.sleep(wait)
                 continue
             resp.raise_for_status()

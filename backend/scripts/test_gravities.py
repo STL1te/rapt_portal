@@ -1,6 +1,7 @@
 """Self-check for the OG/FG estimator. Run: uv run python scripts/test_gravities.py"""
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -18,8 +19,8 @@ def test_normal_ferment():
 def test_pill_lifted_at_end():
     # finishes ~1012 then drifts far above OG when the Pill is pulled out
     g = [1046] * 10 + list(range(1046, 1012, -1)) + [1012] * 20 + [1120, 1180, 1150]
-    assert _fg(g) <= _og(g)          # must not be fooled by the up-drift
-    assert abs(_fg(g) - 1012) < 4    # lands on the real plateau, not the spike
+    assert _fg(g) <= _og(g)  # must not be fooled by the up-drift
+    assert abs(_fg(g) - 1012) < 4  # lands on the real plateau, not the spike
 
 
 def test_dry_cider_below_1000():

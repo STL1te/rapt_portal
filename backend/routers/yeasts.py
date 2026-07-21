@@ -1,4 +1,5 @@
 """Local yeast catalog synced from the RAPT portal inventory."""
+
 from fastapi import APIRouter
 from sqlalchemy import select
 
@@ -15,9 +16,7 @@ def list_yeasts(q: str | None = None, type: str | None = None) -> list[dict]:
         if q:
             like = f"%{q.strip()}%"
             stmt = stmt.where(
-                Yeast.name.ilike(like) |
-                Yeast.product_id.ilike(like) |
-                Yeast.laboratory.ilike(like)
+                Yeast.name.ilike(like) | Yeast.product_id.ilike(like) | Yeast.laboratory.ilike(like)
             )
         if type:
             stmt = stmt.where(Yeast.type == type)
