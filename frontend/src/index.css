@@ -537,6 +537,11 @@ th {
 .row:hover {
   background: var(--panel);
 }
+
+.table-in-panel .row:hover {
+  background: var(--bg);
+}
+
 .row.selected {
   background: var(--accent-bg);
 }

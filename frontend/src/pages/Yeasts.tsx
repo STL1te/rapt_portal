@@ -264,7 +264,7 @@ export default function Yeasts() {
           <p className="muted">Ничего не найдено.</p>
         ) : (
           <>
-            <table>
+            <table className="table-in-panel">
               <thead>
                 <tr>
                   <th>Название</th>

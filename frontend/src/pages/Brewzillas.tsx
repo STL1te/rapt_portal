@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { getBrewzillas } from '../api'
-import { temp, pct } from '../fmt'
+import { pct, temp } from '../fmt'
 import { useTitle } from '../useTitle'
 
 export default function Brewzillas() {
@@ -19,33 +19,39 @@ export default function Brewzillas() {
 
   return (
     <>
-      <h2>Пивоварни</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Имя</th>
-            <th>Статус</th>
-            <th>Температура</th>
-            <th>Цель</th>
-            <th>Нагрев</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((b) => (
-            <tr key={b.id} className="row" onClick={() => navigate(`/brewzillas/${b.id}`)}>
-              <td>{b.name ?? b.id}</td>
-              <td>
-                <span className={b.active_session_id ? 'badge active' : 'badge'}>
-                  {b.active_session_id ? 'варит' : 'простой'}
-                </span>
-              </td>
-              <td>{temp(b.temperature)}</td>
-              <td>{temp(b.target_temperature)}</td>
-              <td>{b.heating_enabled ? pct(b.heating_utilisation) : '—'}</td>
+      <div className="page-head">
+        <h2>Пивоварни</h2>
+        <div className="dates muted">Всего: {data.length}</div>
+      </div>
+
+      <section className="panel">
+        <table className="table-in-panel">
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th>Статус</th>
+              <th>Температура</th>
+              <th>Цель</th>
+              <th>Нагрев</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((b) => (
+              <tr key={b.id} className="row" onClick={() => navigate(`/brewzillas/${b.id}`)}>
+                <td>{b.name ?? b.id}</td>
+                <td>
+                  <span className={b.active_session_id ? 'badge active' : 'badge'}>
+                    {b.active_session_id ? 'варит' : 'простой'}
+                  </span>
+                </td>
+                <td>{temp(b.temperature)}</td>
+                <td>{temp(b.target_temperature)}</td>
+                <td>{b.heating_enabled ? pct(b.heating_utilisation) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </>
   )
 }

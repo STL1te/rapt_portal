@@ -23,18 +23,18 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@router.post("/sync")
+@router.post("/api/sync")
 async def trigger_sync() -> dict:
     return await sync.sync_once()
 
 
-@router.post("/portal_data_sync")
+@router.post("/api/portal_data_sync")
 async def trigger_portal_data_sync(payload: PortalSyncRequest) -> dict:
     await portal_data_sync(force=payload.force, portal_token=payload.portal_token)
     return {"status": "ok"}
 
 
-@router.post("/sync_yeasts")
+@router.post("/api/sync_yeasts")
 def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
     count = sync_yeasts(portal_token=payload.portal_token)
     return {"status": "ok", "count": count}
