@@ -17,7 +17,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "8080:80"                    # only public entrypoint; nginx proxies /api -> backend
+      - "${FRONTEND_PORT:-8080}:80"  # host port from root .env (default 8080); nginx proxies /api -> backend
     depends_on:
       backend:
         condition: service_healthy

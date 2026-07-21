@@ -7,11 +7,12 @@ RAPT API into SQLite, a React frontend shows devices, sessions and charts.
 
 ```bash
 cp backend/.env.example backend/.env   # fill RAPT_USERNAME + RAPT_SECRET
+cp .env.example .env                    # optional: set FRONTEND_PORT (default 8080)
 docker compose up -d --build
 ```
 
-App on `http://localhost:8080` (nginx serves the frontend and proxies `/api` to
-the backend). The DB lives in `./data/`.
+App on `http://localhost:8080` (or your `FRONTEND_PORT`). nginx serves the
+frontend and proxies `/api` to the backend. The DB lives in `./data/`.
 
 ## Backend (dev)
 
