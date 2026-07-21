@@ -19,8 +19,11 @@ export default function HydrometerChart({ sessionId }: { sessionId: string }) {
   if (error) return <p className="error">Ошибка: {String(error)}</p>
   if (!data?.length) return <p>Нет точек телеметрии.</p>
 
+  const parseUtc = (value: string) =>
+    new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
+
   const points = data.map((p) => ({
-    t: new Date(p.timestamp).getTime(),
+    t: parseUtc(p.timestamp),
     gravity: p.gravity,
     temperature: p.temperature,
     velocity: p.gravity_velocity != null ? Math.abs(p.gravity_velocity) : null,
