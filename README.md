@@ -41,7 +41,7 @@ locally. To import existing sessions, put a portal (rapt-web) bearer token in
 `backend/.portal_token` (from browser DevTools) and run:
 
 ```bash
-cd backend && uv run python backfill.py
+cd backend && uv run python -m scripts.backfill
 ```
 
 ## Frontend (dev)

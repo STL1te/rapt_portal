@@ -16,6 +16,13 @@ export const dbm = (n: number | null) => (n == null ? '—' : `${Math.round(n)} 
 export const date = (s: string | null) =>
   s ? new Date(s).toLocaleDateString() : '—'
 
+export function stepLen(seconds: number | null): string {
+  if (seconds == null) return '—'
+  const m = Math.round(seconds / 60)
+  if (m < 60) return `${m} мин`
+  return `${Math.floor(m / 60)} ч ${m % 60} мин`
+}
+
 export function duration(start: string | null, end: string | null): string {
   if (!start) return '—'
   const ms = (end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()

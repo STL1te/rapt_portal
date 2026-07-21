@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY *.py ./
+COPY . .
 
 # DB lives on a volume; secrets come from env_file at runtime
 ENV DATABASE_URL=sqlite:////data/rapt.db

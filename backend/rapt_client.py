@@ -74,6 +74,21 @@ async def get_telemetry(
     return await get("/api/Hydrometers/GetTelemetry", params)
 
 
+async def get_brewzillas() -> list[dict]:
+    return await get("/api/BrewZillas/GetBrewZillas")
+
+
+async def get_brewzilla_telemetry(
+    brewzilla_id: str, start: str | None = None, session_id: str | None = None
+) -> list[dict]:
+    params = {"brewZillaId": brewzilla_id}
+    if start:
+        params["startDate"] = start
+    if session_id:
+        params["profileSessionId"] = session_id
+    return await get("/api/BrewZillas/GetTelemetry", params)
+
+
 async def demo() -> None:
     """Sanity check: log in and dump the first hydrometer's raw JSON."""
     import json

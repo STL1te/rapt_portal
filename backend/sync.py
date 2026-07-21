@@ -10,7 +10,15 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 import rapt_client
-from db import Hydrometer, Session, SessionLocal, Telemetry
+from db import (
+    BrewSession,
+    BrewTelemetry,
+    BrewZilla,
+    Hydrometer,
+    HydrometerSession,
+    HydrometerTelemetry,
+    SessionLocal,
+)
 
 
 def _now() -> datetime:
@@ -68,7 +76,7 @@ async def sync_once() -> dict:
             })
 
             if active_id:
-                _upsert(db, Session, {
+                _upsert(db, HydrometerSession, {
                     "id": active_id,
                     "hydrometer_id": hid,
                     "name": active.get("name"),
@@ -82,11 +90,112 @@ async def sync_once() -> dict:
         await _sync_telemetry(hid, sid)
         _refresh_gravities(sid)
 
-    return {"hydrometers": len(hydrometers), "active_sessions": len(active_pairs)}
+    brew = await _sync_brewzillas()
+
+    return {
+        "hydrometers": len(hydrometers),
+        "active_sessions": len(active_pairs),
+        "brewzillas": brew["devices"],
+        "brew_active": brew["active"],
+    }
+
+
+async def _sync_brewzillas() -> dict:
+    import json
+
+    devices = await rapt_client.get_brewzillas()
+    active_pairs: list[tuple[str, str]] = []
+
+    with SessionLocal() as db:
+        for b in devices:
+            bid = b.get("id")
+            if not bid:
+                continue
+            active = b.get("activeProfileSession") or None
+            active_id = (active or {}).get("id")
+
+            prev = db.get(BrewZilla, bid)
+            prev_id = prev.active_session_id if prev else None
+            if prev_id and prev_id != active_id:
+                s = db.get(BrewSession, prev_id)
+                if s and s.active:
+                    s.active = False
+                    s.end_date = _now()
+
+            _upsert(db, BrewZilla, {
+                "id": bid,
+                "name": b.get("name"),
+                "temperature": b.get("temperature"),
+                "target_temperature": b.get("targetTemperature"),
+                "heating_enabled": b.get("heatingEnabled"),
+                "heating_utilisation": b.get("heatingUtilisation"),
+                "pump_enabled": b.get("pumpEnabled"),
+                "pump_utilisation": b.get("pumpUtilisation"),
+                "rssi": b.get("rssi"),
+                "active_session_id": active_id,
+                "updated_at": _now(),
+            })
+
+            if active_id:
+                prof = active.get("profile")
+                _upsert(db, BrewSession, {
+                    "id": active_id,
+                    "brewzilla_id": bid,
+                    "name": active.get("name") or (prof or {}).get("name"),
+                    "profile_id": active.get("profileId"),
+                    "profile_json": json.dumps(prof, ensure_ascii=False) if prof else None,
+                    "start_date": _dt(active.get("startDate")),
+                    "active": True,
+                })
+                active_pairs.append((bid, active_id))
+        db.commit()
+
+    for bid, sid in active_pairs:
+        await _sync_brew_telemetry(bid, sid)
+
+    return {"devices": len(devices), "active": len(active_pairs)}
+
+
+async def _sync_brew_telemetry(brewzilla_id: str, session_id: str) -> None:
+    with SessionLocal() as db:
+        last = db.scalar(
+            select(func.max(BrewTelemetry.timestamp)).where(BrewTelemetry.session_id == session_id)
+        )
+        existing = set(
+            db.scalars(select(BrewTelemetry.timestamp).where(BrewTelemetry.session_id == session_id))
+        )
+
+    start = last.isoformat() if last else None
+    points = await rapt_client.get_brewzilla_telemetry(brewzilla_id, start=start, session_id=session_id)
+
+    with SessionLocal() as db:
+        for p in points or []:
+            ts = _dt(p.get("createdOn"))
+            if ts is None or ts in existing:
+                continue
+            db.add(BrewTelemetry(
+                session_id=session_id,
+                timestamp=ts,
+                temperature=p.get("temperature"),
+                target_temperature=p.get("targetTemperature"),
+                min_target_temperature=p.get("minTargetTemperature"),
+                max_target_temperature=p.get("maxTargetTemperature"),
+                control_device_temperature=p.get("controlDeviceTemperature"),
+                heating_run_time=p.get("heatingRunTime"),
+                heating_starts=p.get("heatingStarts"),
+                auxillary_run_time=p.get("auxillaryRunTime"),
+                auxillary_starts=p.get("auxillaryStarts"),
+                profile_step_id=p.get("profileStepId"),
+                profile_step_progress=p.get("profileStepProgress"),
+                profile_session_time=p.get("profileSessionTime"),
+                rssi=p.get("rssi"),
+            ))
+            existing.add(ts)
+        db.commit()
 
 
 def _close_session(db, session_id: str) -> None:
-    s = db.get(Session, session_id)
+    s = db.get(HydrometerSession, session_id)
     if s and s.active:
         s.active = False
         s.end_date = _now()
@@ -96,10 +205,12 @@ async def _sync_telemetry(hydrometer_id: str, session_id: str) -> None:
     """Append only telemetry points newer than the last stored one."""
     with SessionLocal() as db:
         last = db.scalar(
-            select(func.max(Telemetry.timestamp)).where(Telemetry.session_id == session_id)
+            select(func.max(HydrometerTelemetry.timestamp))
+            .where(HydrometerTelemetry.session_id == session_id)
         )
         existing = set(
-            db.scalars(select(Telemetry.timestamp).where(Telemetry.session_id == session_id))
+            db.scalars(select(HydrometerTelemetry.timestamp)
+                       .where(HydrometerTelemetry.session_id == session_id))
         )
 
     start = last.isoformat() if last else None
@@ -110,7 +221,7 @@ async def _sync_telemetry(hydrometer_id: str, session_id: str) -> None:
             ts = _dt(p.get("createdOn"))
             if ts is None or ts in existing:
                 continue
-            db.add(Telemetry(
+            db.add(HydrometerTelemetry(
                 session_id=session_id,
                 timestamp=ts,
                 gravity=p.get("gravity"),
@@ -138,14 +249,14 @@ def _refresh_gravities(session_id: str) -> None:
     import statistics
 
     with SessionLocal() as db:
-        s = db.get(Session, session_id)
+        s = db.get(HydrometerSession, session_id)
         if not s:
             return
         g = [
             x for x in db.scalars(
-                select(Telemetry.gravity)
-                .where(Telemetry.session_id == session_id)
-                .order_by(Telemetry.timestamp)
+                select(HydrometerTelemetry.gravity)
+                .where(HydrometerTelemetry.session_id == session_id)
+                .order_by(HydrometerTelemetry.timestamp)
             )
             if x is not None and _GRAVITY_MIN <= x <= _GRAVITY_MAX
         ]

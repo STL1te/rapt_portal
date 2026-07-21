@@ -2,7 +2,10 @@ import { Routes, Route, NavLink } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Hydrometers from './pages/Hydrometers'
 import HydrometerDetail from './pages/HydrometerDetail'
-import SessionPage from './pages/SessionPage'
+import HydrometerSessionPage from './pages/HydrometerSessionPage'
+import Brewzillas from './pages/Brewzillas'
+import BrewZillaDetail from './pages/BrewZillaDetail'
+import BrewSessionPage from './pages/BrewSessionPage'
 import ThemeToggle from './components/ThemeToggle'
 
 export default function App() {
@@ -13,6 +16,7 @@ export default function App() {
         <nav>
           <NavLink to="/" end><i className="fa-solid fa-gauge-high" /> Дашборд</NavLink>
           <NavLink to="/hydrometers"><i className="fa-solid fa-flask" /> Гидрометры</NavLink>
+          <NavLink to="/brewzillas"><i className="fa-solid fa-fire-burner" /> Пивоварни</NavLink>
         </nav>
         <ThemeToggle />
       </aside>
@@ -21,7 +25,10 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/hydrometers" element={<Hydrometers />} />
           <Route path="/hydrometers/:id" element={<HydrometerDetail />} />
-          <Route path="/sessions/:id" element={<SessionPage />} />
+          <Route path="/sessions/:id" element={<HydrometerSessionPage />} />
+          <Route path="/brewzillas" element={<Brewzillas />} />
+          <Route path="/brewzillas/:id" element={<BrewZillaDetail />} />
+          <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />
         </Routes>
       </main>
     </div>

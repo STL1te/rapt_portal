@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSession } from '../api'
-import TelemetryChart from '../components/TelemetryChart'
+import HydrometerChart from '../components/HydrometerChart'
 import StatCards from '../components/StatCards'
 import { grav, sg, brix, date, duration } from '../fmt'
 import { useTitle } from '../useTitle'
 
-export default function SessionPage() {
+export default function HydrometerSessionPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -41,7 +41,7 @@ export default function SessionPage() {
       </div>
       <StatCards stats={stats} />
       <section className="chart">
-        <TelemetryChart sessionId={s.id} />
+        <HydrometerChart sessionId={s.id} />
       </section>
     </div>
   )

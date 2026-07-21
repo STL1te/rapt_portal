@@ -10,7 +10,7 @@ Sessions carry no endDate/OG/FG even here, so OG/FG are derived from the
 first/last telemetry point and end_date from the last point.
 
 Usage (from backend/):
-  PORTAL_TOKEN="eyJ..." uv run python backfill.py
+  PORTAL_TOKEN="eyJ..." uv run python -m scripts.backfill
 """
 import asyncio
 import os
@@ -21,7 +21,14 @@ from sqlalchemy import func, select
 import rapt_client
 import sync
 from config import API_BASE
-from db import Session, SessionLocal, Telemetry, init_db
+from db import (
+    BrewSession,
+    BrewTelemetry,
+    HydrometerSession,
+    HydrometerTelemetry,
+    SessionLocal,
+    init_db,
+)
 
 def _load_token() -> str:
     tok = os.environ.get("PORTAL_TOKEN", "")
@@ -34,14 +41,16 @@ def _load_token() -> str:
 PORTAL_TOKEN = _load_token()
 
 
-async def _list_sessions(client: httpx.AsyncClient, hydrometer_id: str) -> list[dict]:
-    """All profile sessions for a hydrometer, following pagination."""
+async def _list_sessions(
+    client: httpx.AsyncClient, endpoint: str, id_param: str, id_value: str
+) -> list[dict]:
+    """All profile sessions for a device (portal endpoint), following pagination."""
     out: list[dict] = []
     page = 1
     while True:
         r = await client.get(
-            f"{API_BASE}/api/ProfileSessions/GetHydrometerProfileSessions",
-            params={"hydrometerId": hydrometer_id, "page": page, "pageSize": 100, "filterText": ""},
+            f"{API_BASE}/api/ProfileSessions/{endpoint}",
+            params={id_param: id_value, "page": page, "pageSize": 100, "filterText": ""},
             headers={"Authorization": f"Bearer {PORTAL_TOKEN}"},
         )
         r.raise_for_status()
@@ -65,13 +74,14 @@ async def backfill() -> None:
     async with httpx.AsyncClient(timeout=60) as client:
         for h in hydrometers:
             hid = h["id"]
-            sessions = await _list_sessions(client, hid)
+            sessions = await _list_sessions(
+                client, "GetHydrometerProfileSessions", "hydrometerId", hid)
             print(f"{h['name']}: {len(sessions)} session(s)")
             for s in sessions:
                 sid = s["id"]
                 end = sync._dt(s.get("endDate"))  # absent (null) => still active
                 with SessionLocal() as db:
-                    sync._upsert(db, Session, {
+                    sync._upsert(db, HydrometerSession, {
                         "id": sid,
                         "hydrometer_id": hid,
                         "name": s.get("name"),
@@ -84,9 +94,41 @@ async def backfill() -> None:
                 sync._refresh_gravities(sid)  # OG/FG genuinely not in payload
                 await asyncio.sleep(0.5)  # be gentle with RAPT's rate limiter
 
+        await _backfill_brewzillas(client)
+
     with SessionLocal() as db:
-        print("DB totals -> sessions:", db.scalar(select(func.count(Session.id))),
-              "| telemetry:", db.scalar(select(func.count(Telemetry.id))))
+        print("DB totals -> hydro sessions:", db.scalar(select(func.count(HydrometerSession.id))),
+              "| hydro telemetry:", db.scalar(select(func.count(HydrometerTelemetry.id))),
+              "| brew sessions:", db.scalar(select(func.count(BrewSession.id))),
+              "| brew telemetry:", db.scalar(select(func.count(BrewTelemetry.id))))
+
+
+async def _backfill_brewzillas(client: httpx.AsyncClient) -> None:
+    import json
+
+    for b in await rapt_client.get_brewzillas():
+        bid = b["id"]
+        sessions = await _list_sessions(
+            client, "GetBrewZillaProfileSessions", "brewZillaId", bid)
+        print(f"{b['name']}: {len(sessions)} brew session(s)")
+        for s in sessions:
+            sid = s["id"]
+            end = sync._dt(s.get("endDate"))  # absent (null) => still active
+            prof = s.get("profile")
+            with SessionLocal() as db:
+                sync._upsert(db, BrewSession, {
+                    "id": sid,
+                    "brewzilla_id": bid,
+                    "name": (prof or {}).get("name"),
+                    "profile_id": s.get("profileId"),
+                    "profile_json": json.dumps(prof, ensure_ascii=False) if prof else None,
+                    "start_date": sync._dt(s.get("startDate")),
+                    "end_date": end,
+                    "active": end is None,
+                })
+                db.commit()
+            await sync._sync_brew_telemetry(bid, sid)
+            await asyncio.sleep(0.5)  # be gentle with RAPT's rate limiter
 
 
 if __name__ == "__main__":

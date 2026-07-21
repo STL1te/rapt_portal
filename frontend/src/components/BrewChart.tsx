@@ -4,15 +4,15 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
   ResponsiveContainer,
 } from 'recharts'
-import { getTelemetry } from '../api'
+import { getBrewTelemetry } from '../api'
 
-export default function TelemetryChart({ sessionId }: { sessionId: string }) {
+export default function BrewChart({ sessionId }: { sessionId: string }) {
   const [hidden, setHidden] = useState<Record<string, boolean>>({})
   const toggle = (key?: string | number) => key && setHidden((h) => ({ ...h, [key]: !h[key] }))
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['telemetry', sessionId],
-    queryFn: () => getTelemetry(sessionId),
+    queryKey: ['brew-telemetry', sessionId],
+    queryFn: () => getBrewTelemetry(sessionId),
   })
 
   if (isLoading) return <p>Загрузка графика…</p>
@@ -21,9 +21,9 @@ export default function TelemetryChart({ sessionId }: { sessionId: string }) {
 
   const points = data.map((p) => ({
     t: new Date(p.timestamp).getTime(),
-    gravity: p.gravity,
     temperature: p.temperature,
-    velocity: p.gravity_velocity,
+    target: p.target_temperature,
+    wort: p.control_device_temperature,
   }))
 
   const fmtTime = (t: number) => new Date(t).toLocaleDateString()
@@ -31,21 +31,25 @@ export default function TelemetryChart({ sessionId }: { sessionId: string }) {
     const d = new Date(t)
     return `${d.getDate()}.${d.getMonth() + 1}`
   }
-  const C = { gravity: '#e0a93a', temperature: '#4ea1ff', velocity: '#35c28a' }
+  const C = { temperature: '#4ea1ff', target: '#ff8a4e', wort: '#35c28a' }
 
   return (
     <ResponsiveContainer width="100%" height={480}>
       <LineChart data={points} margin={{ top: 8, right: 28, bottom: 8, left: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
-        <XAxis
-          dataKey="t" type="number" domain={['dataMin', 'dataMax']}
-          scale="time" tickFormatter={fmtTime} stroke="#888"
+        <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']}
+          scale="time" tickFormatter={fmtTime} stroke="#888" />
+        <YAxis domain={['auto', 'auto']} stroke="#888" unit="°" />
+        <Tooltip
+          labelFormatter={(t) => new Date(Number(t)).toLocaleString()} 
+          formatter={(value, name, item) => {
+            if (item.dataKey === 'temperature' || item.dataKey === 'wort') {
+              return [`${Number(value).toFixed(1)} °C`, name]
+            }
+
+            return [value, name]
+          }}
         />
-        <YAxis yAxisId="g" orientation="left" domain={['auto', 'auto']} stroke={C.gravity} />
-        <YAxis yAxisId="t" orientation="right" domain={['auto', 'auto']} stroke={C.temperature} />
-        {/* velocity has its own scale (S.G. points/day); axis hidden to avoid clutter */}
-        <YAxis yAxisId="v" hide domain={['auto', 'auto']} />
-        <Tooltip labelFormatter={(t) => new Date(Number(t)).toLocaleString()} />
         <Legend
           wrapperStyle={{ paddingTop: 16 }}
           onClick={(e) => toggle(e.dataKey as string)}
@@ -55,17 +59,17 @@ export default function TelemetryChart({ sessionId }: { sessionId: string }) {
             </span>
           )}
         />
-        <Line yAxisId="g" type="monotone" dataKey="gravity" name="Плотность, S.G."
-          stroke={C.gravity} dot={false} connectNulls hide={hidden.gravity} />
-        <Line yAxisId="t" type="monotone" dataKey="temperature" name="Температура, °C"
+        <Line type="monotone" dataKey="temperature" name="Котёл, °C"
           stroke={C.temperature} dot={false} connectNulls hide={hidden.temperature} />
-        <Line yAxisId="v" type="monotone" dataKey="velocity" name="Скорость, S.G./день"
-          stroke={C.velocity} dot={false} connectNulls strokeDasharray="4 2" hide={hidden.velocity} />
+        <Line type="monotone" dataKey="wort" name="Сусло, °C"
+          stroke={C.wort} dot={false} connectNulls hide={hidden.wort} />
+        <Line type="monotone" dataKey="target" name="Целевая, °C"
+          stroke={C.target} dot={false} connectNulls strokeDasharray="4 2" hide={hidden.target} />
         <Brush dataKey="t" height={44} travellerWidth={10}
           stroke={C.temperature} fill="var(--panel)" tickFormatter={fmtBrush}>
           <AreaChart>
-            <Area type="monotone" dataKey="gravity" stroke={C.gravity}
-              fill={C.gravity} fillOpacity={0.25} dot={false} connectNulls isAnimationActive={false} />
+            <Area type="monotone" dataKey="temperature" stroke={C.temperature}
+              fill={C.temperature} fillOpacity={0.25} dot={false} connectNulls isAnimationActive={false} />
           </AreaChart>
         </Brush>
       </LineChart>
