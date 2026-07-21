@@ -19,6 +19,8 @@ export default function Dashboard() {
   return (
     <>
     <h2>Дашборд</h2>
+    <section className="panel">
+    <h3 className="panel-title"><i className="fa-solid fa-flask" /> Гидрометры</h3>
     <div className="grid">
       {data.map((h) => (
         <Link key={h.id} to={`/hydrometers/${h.id}`} className="card">
@@ -37,6 +39,7 @@ export default function Dashboard() {
         </Link>
       ))}
     </div>
+    </section>
     </>
   )
 }

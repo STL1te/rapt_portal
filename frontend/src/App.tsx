@@ -9,7 +9,7 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand"><i className="fa-solid fa-beer-mug-empty" /> RAPT Portal</div>
+        <div className="brand"><img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal</div>
         <nav>
           <NavLink to="/" end><i className="fa-solid fa-gauge-high" /> Дашборд</NavLink>
           <NavLink to="/hydrometers"><i className="fa-solid fa-flask" /> Гидрометры</NavLink>
