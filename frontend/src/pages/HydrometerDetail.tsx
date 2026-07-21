@@ -37,7 +37,7 @@ export default function HydrometerDetail() {
           </thead>
           <tbody>
             {sessions.map((s) => (
-              <tr key={s.id} className="row" onClick={() => navigate(`/sessions/${s.id}`)}>
+              <tr key={s.id} className="row" onClick={() => navigate(`/hydrometer-sessions/${s.id}`)}>
                 <td>{s.name ?? s.id}{s.active && <span className="badge active">активна</span>}</td>
                 <td>{date(s.start_date)}</td>
                 <td>{s.active ? '—' : date(s.end_date)}</td>

@@ -65,7 +65,7 @@ cd backend
 uv sync
 uv run uvicorn app:app --reload
 uv run python rapt_client.py
-uv run python test_gravities.py
+uv run python scripts/test_gravities.py
 ```
 
 Frontend:
@@ -109,7 +109,7 @@ docker compose down
 
 For backend changes:
 
-- Run `uv run python test_gravities.py` if gravity/session logic changed.
+- Run `uv run python scripts/test_gravities.py` if gravity/session logic changed.
 - Run or smoke-check `uv run uvicorn app:app --reload` when route wiring or app
   startup changes.
 - Use `uv run python rapt_client.py` only when credentials/network access are

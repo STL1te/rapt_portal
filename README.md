@@ -108,13 +108,13 @@ Useful commands:
 
 ```bash
 uv run python rapt_client.py
-uv run python test_gravities.py
+uv run python scripts/test_gravities.py
 uv run python -m scripts.backfill
 ```
 
-`rapt_client.py` is a login/API smoke test. `test_gravities.py` checks the
-gravity estimator. `scripts.backfill` imports historical hydrometer sessions
-from the RAPT web portal API and expects a portal bearer token in
+`rapt_client.py` is a login/API smoke test. `scripts/test_gravities.py` checks
+the gravity estimator. `scripts.backfill` imports historical hydrometer
+sessions from the RAPT web portal API and expects a portal bearer token in
 `backend/.portal_token`.
 
 ## Frontend Development
@@ -154,8 +154,8 @@ Hydrometers:
 
 - `GET /api/hydrometers`
 - `GET /api/hydrometers/{hydrometer_id}/sessions`
-- `GET /api/sessions/{session_id}`
-- `GET /api/sessions/{session_id}/telemetry?start=...&end=...`
+- `GET /api/hydrometer-sessions/{session_id}`
+- `GET /api/hydrometer-sessions/{session_id}/telemetry?start=...&end=...`
 
 BrewZillas:
 
@@ -169,7 +169,7 @@ BrewZillas:
 - `/` - dashboard.
 - `/hydrometers` - hydrometer list.
 - `/hydrometers/:id` - sessions for one hydrometer.
-- `/sessions/:id` - hydrometer session chart and statistics.
+- `/hydrometer-sessions/:id` - hydrometer session chart and statistics.
 - `/brewzillas` - BrewZilla list.
 - `/brewzillas/:id` - sessions for one BrewZilla.
 - `/brew-sessions/:id` - brew session profile and telemetry chart.

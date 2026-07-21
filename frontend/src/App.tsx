@@ -25,7 +25,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/hydrometers" element={<Hydrometers />} />
           <Route path="/hydrometers/:id" element={<HydrometerDetail />} />
-          <Route path="/sessions/:id" element={<HydrometerSessionPage />} />
+          <Route path="/hydrometer-sessions/:id" element={<HydrometerSessionPage />} />
           <Route path="/brewzillas" element={<Brewzillas />} />
           <Route path="/brewzillas/:id" element={<BrewZillaDetail />} />
           <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />

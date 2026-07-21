@@ -25,7 +25,7 @@ def list_sessions(hydrometer_id: str) -> list[dict]:
         return [session_dict(s) for s in rows]
 
 
-@router.get("/api/sessions/{session_id}")
+@router.get("/api/hydrometer-sessions/{session_id}")
 def get_session(session_id: str) -> dict:
     with SessionLocal() as db:
         s = db.get(HydrometerSession, session_id)
@@ -34,7 +34,7 @@ def get_session(session_id: str) -> dict:
         return session_dict(s)
 
 
-@router.get("/api/sessions/{session_id}/telemetry")
+@router.get("/api/hydrometer-sessions/{session_id}/telemetry")
 def session_telemetry(
     session_id: str, start: str | None = None, end: str | None = None
 ) -> list[dict]:

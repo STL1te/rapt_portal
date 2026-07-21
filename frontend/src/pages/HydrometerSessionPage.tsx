@@ -11,7 +11,7 @@ export default function HydrometerSessionPage() {
   const navigate = useNavigate()
 
   const { data: s, isLoading, error } = useQuery({
-    queryKey: ['session', id],
+    queryKey: ['hydrometer-session', id],
     queryFn: () => getSession(id!),
     enabled: !!id,
   })

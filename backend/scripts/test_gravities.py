@@ -1,4 +1,9 @@
-"""Self-check for the OG/FG estimator. Run: uv run python test_gravities.py"""
+"""Self-check for the OG/FG estimator. Run: uv run python scripts/test_gravities.py"""
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from sync import _fg, _og
 
 

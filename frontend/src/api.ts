@@ -100,9 +100,9 @@ export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
 export const getSessions = (hydrometerId: string) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
 export const getSession = (sessionId: string) =>
-  get<Session>(`/api/sessions/${sessionId}`)
+  get<Session>(`/api/hydrometer-sessions/${sessionId}`)
 export const getTelemetry = (sessionId: string) =>
-  get<HydrometerTelemetryPoint[]>(`/api/sessions/${sessionId}/telemetry`)
+  get<HydrometerTelemetryPoint[]>(`/api/hydrometer-sessions/${sessionId}/telemetry`)
 
 export const getBrewzillas = () => get<BrewZilla[]>('/api/brewzillas')
 export const getBrewSessions = (brewzillaId: string) =>
