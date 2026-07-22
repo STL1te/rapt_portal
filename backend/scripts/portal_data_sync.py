@@ -30,7 +30,6 @@ from core.db import (
     HydrometerSession,
     HydrometerTelemetry,
     SessionLocal,
-    init_db,
 )
 
 
@@ -88,7 +87,6 @@ async def portal_data_sync(force: bool = False, portal_token: str | None = None)
     if not token:
         raise SystemExit("Set PORTAL_TOKEN to a portal (rapt-web) bearer token")
 
-    init_db(finalize_stale=False)
     print("base sync:", await sync.sync_once())
 
     hydrometers = await rapt_client.get_hydrometers()

@@ -344,6 +344,19 @@ h2:first-child {
   line-height: 1.5;
 }
 
+.ai-chat-window.fullscreen .ai-chat-messages,
+.ai-chat-window.fullscreen .ai-chat-compose {
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+.ai-chat-window.fullscreen .ai-bubble.assistant {
+  max-width: 100%;
+  border: none;
+  background: none;
+  padding-inline: 0;
+}
+
 .ai-bubble.user {
   align-self: flex-end;
   border-bottom-right-radius: 4px;

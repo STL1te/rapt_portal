@@ -148,12 +148,3 @@ class SystemJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     result_json: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
-
-
-def init_db(*, finalize_stale: bool = True) -> None:
-    from core.db_migrations import run_migrations
-    from features.system.services import finalize_stale_jobs
-
-    run_migrations()
-    if finalize_stale:
-        finalize_stale_jobs()

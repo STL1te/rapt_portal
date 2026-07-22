@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from core import sync
 from core.config import API_BASE
-from core.db import SessionLocal, Yeast, init_db
+from core.db import SessionLocal, Yeast
 
 
 def _load_token() -> str:
@@ -23,7 +23,6 @@ def sync_yeasts(portal_token: str | None = None) -> int:
     if not token:
         raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
 
-    init_db(finalize_stale=False)
     headers = {"Authorization": f"Bearer {token}"}
     page = 1
     total = 0

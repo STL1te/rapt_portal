@@ -44,16 +44,18 @@ DEFAULT_INSTRUCTIONS: dict[AssessmentKind, str] = {
         "Дай полную технологическую оценку текущего брожения строго по данным из контекста. "
         "Разбери: динамику плотности (OG, текущая, целевой FG) и степень сбраживания, "
         "соответствие температуры диапазону дрожжей, признаки замедления, остановки или "
-        "завершения брожения. Формат: Итог, Наблюдения (с конкретными значениями), Риски, "
-        "Следующие действия. Не задавай уточняющих вопросов и не предлагай выбрать вид "
+        "завершения брожения. Каждый раздел оформи markdown-заголовком с новой строки "
+        "(## Итог, ## Наблюдения, ## Риски, ## Следующие действия), а содержание — абзацем "
+        "под ним. Не задавай уточняющих вопросов и не предлагай выбрать вид "
         "анализа — сразу выполняй оценку. Заверши ответ разделом «Следующие действия»; не "
         "предлагай визуализацию, графики, таблицы или дополнительный анализ."
     ),
     "brew": (
         "Дай полную технологическую оценку текущей варки строго по данным из контекста. "
         "Разбери: выполнение профиля и текущий шаг, отклонения температуры котла и сусла от "
-        "целевых, динамику нагрева. Формат: Итог, Наблюдения (с конкретными значениями), "
-        "Риски, Следующие действия. Не задавай уточняющих вопросов и не предлагай выбрать "
+        "целевых, динамику нагрева. Каждый раздел оформи markdown-заголовком с новой строки "
+        "(## Итог, ## Наблюдения, ## Риски, ## Следующие действия), а содержание — абзацем "
+        "под ним. Не задавай уточняющих вопросов и не предлагай выбрать "
         "вид анализа — сразу выполняй оценку. Заверши ответ разделом «Следующие действия»; "
         "не предлагай визуализацию, графики, таблицы или дополнительный анализ."
     ),
@@ -128,7 +130,20 @@ def _sample(
             for i in sorted({round(i * (len(rows) - 1) / (count - 1)) for i in range(count)})
         ]
     )
-    return [{field: getattr(item, field) for field in fields} for item in selected]
+
+    def value(item, field):
+        v = getattr(item, field)
+        return round(v, 1) if isinstance(v, float) else v
+
+    return [{field: value(item, field) for field in fields} for item in selected]
+
+
+_ROUNDED_SESSION_KEYS = (
+    "original_gravity",
+    "final_gravity",
+    "current_gravity",
+    "target_final_gravity",
+)
 
 
 def _fermentation_context(db, session_id: str) -> dict | None:
@@ -142,8 +157,12 @@ def _fermentation_context(db, session_id: str) -> dict | None:
             .order_by(HydrometerTelemetry.timestamp)
         )
     )
+    session_data = session_dict(session, db)
+    for key in _ROUNDED_SESSION_KEYS:
+        if isinstance(session_data.get(key), float):
+            session_data[key] = round(session_data[key], 1)
     return {
-        "session": session_dict(session, db),
+        "session": session_data,
         "telemetry": _sample(
             telemetry,
             ("timestamp", "gravity", "gravity_velocity", "temperature"),

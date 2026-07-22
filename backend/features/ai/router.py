@@ -1,5 +1,6 @@
 """Local AI assessments backed by an OpenAI-compatible API."""
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +12,7 @@ from core.db import SessionLocal
 
 from .services import DEFAULT_QUESTIONS, assess, build_context
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -43,8 +45,10 @@ async def create_assessment(request: AssessmentRequest) -> dict:
             [message.model_dump() for message in request.history],
         )
     except APIConnectionError as error:
+        logger.warning("LLM unavailable at %s: %s", LLM_MODEL, error)
         raise HTTPException(503, "LLM is unavailable") from error
     except OpenAIError as error:
+        logger.exception("LLM request failed for model %s", LLM_MODEL)
         raise HTTPException(502, "LLM request failed") from error
 
     return {
