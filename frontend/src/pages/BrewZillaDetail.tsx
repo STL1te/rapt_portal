@@ -48,29 +48,31 @@ export default function BrewZillaDetail() {
       {!sessions?.length ? (
         <p>Варок пока нет.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Профиль</th>
-              <th>Старт</th>
-              <th>Финиш</th>
-              <th>Длит.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.map((s) => (
-              <tr key={s.id} className="row" onClick={() => navigate(`/brew-sessions/${s.id}`)}>
-                <td>
-                  {s.name ?? s.id}
-                  {s.active && <span className="badge active">варит</span>}
-                </td>
-                <td>{date(s.start_date)}</td>
-                <td>{s.active ? '—' : date(s.end_date)}</td>
-                <td>{durationHm(s.start_date, s.end_date)}</td>
+        <div className="table-wrap mobile-cards">
+          <table className="mobile-cards">
+            <thead>
+              <tr>
+                <th>Профиль</th>
+                <th>Старт</th>
+                <th>Финиш</th>
+                <th>Длит.</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.id} className="row" onClick={() => navigate(`/brew-sessions/${s.id}`)}>
+                  <td data-label="Профиль">
+                    {s.name ?? s.id}
+                    {s.active && <span className="badge active">варит</span>}
+                  </td>
+                  <td data-label="Старт">{date(s.start_date)}</td>
+                  <td data-label="Финиш">{s.active ? '—' : date(s.end_date)}</td>
+                  <td data-label="Длит.">{durationHm(s.start_date, s.end_date)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

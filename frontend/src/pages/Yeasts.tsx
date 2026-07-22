@@ -264,37 +264,41 @@ export default function Yeasts() {
           <p className="muted">Ничего не найдено.</p>
         ) : (
           <>
-            <table className="table-in-panel">
-              <thead>
-                <tr>
-                  <th>Название</th>
-                  <th>Лаборатория</th>
-                  <th>Тип</th>
-                  <th>Форма</th>
-                  <th>Температура</th>
-                  <th>Аттенюация</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((yeast) => (
-                  <tr
-                    key={yeast.id}
-                    className="row"
-                    onClick={() => navigate(`/yeasts/${yeast.id}`)}
-                  >
-                    <td>
-                      <div className="table-title">{yeast.name ?? yeast.id}</div>
-                      <div className="table-subtitle">{yeast.product_id ?? yeast.id}</div>
-                    </td>
-                    <td>{yeast.laboratory ?? '—'}</td>
-                    <td>{yeast.type ?? '—'}</td>
-                    <td>{yeast.form ?? '—'}</td>
-                    <td>{tempRange(yeast)}</td>
-                    <td>{yeast.attenuation == null ? '—' : `${Math.round(yeast.attenuation)}%`}</td>
+            <div className="table-wrap mobile-cards">
+              <table className="table-in-panel mobile-cards">
+                <thead>
+                  <tr>
+                    <th>Название</th>
+                    <th>Лаборатория</th>
+                    <th>Тип</th>
+                    <th>Форма</th>
+                    <th>Температура</th>
+                    <th>Аттенюация</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pageItems.map((yeast) => (
+                    <tr
+                      key={yeast.id}
+                      className="row"
+                      onClick={() => navigate(`/yeasts/${yeast.id}`)}
+                    >
+                      <td data-label="Название">
+                        <div className="table-title">{yeast.name ?? yeast.id}</div>
+                        <div className="table-subtitle">{yeast.product_id ?? yeast.id}</div>
+                      </td>
+                      <td data-label="Лаборатория">{yeast.laboratory ?? '—'}</td>
+                      <td data-label="Тип">{yeast.type ?? '—'}</td>
+                      <td data-label="Форма">{yeast.form ?? '—'}</td>
+                      <td data-label="Температура">{tempRange(yeast)}</td>
+                      <td data-label="Аттенюация">
+                        {yeast.attenuation == null ? '—' : `${Math.round(yeast.attenuation)}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <div className="pagination">
               <span className="muted">

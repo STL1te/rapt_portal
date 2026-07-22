@@ -15,10 +15,12 @@ export default function ThemeToggle() {
   return (
     <button
       className="theme-toggle"
+      type="button"
+      aria-label={theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
       onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
     >
       <i className={theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon'} />
-      {theme === 'dark' ? 'Светлая' : 'Тёмная'}
+      <span>{theme === 'dark' ? 'Светлая' : 'Тёмная'}</span>
     </button>
   )
 }

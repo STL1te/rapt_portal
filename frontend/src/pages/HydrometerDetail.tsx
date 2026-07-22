@@ -34,41 +34,45 @@ export default function HydrometerDetail() {
       {!sessions?.length ? (
         <p>Сессий пока нет.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Сессия</th>
-              <th>Старт</th>
-              <th>Финиш</th>
-              <th>Длит.</th>
-              <th>OG</th>
-              <th>FG</th>
-              <th>Алк.</th>
-              <th>Атт.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.map((s) => (
-              <tr
-                key={s.id}
-                className="row"
-                onClick={() => navigate(`/hydrometer-sessions/${s.id}`)}
-              >
-                <td>
-                  {s.name ?? s.id}
-                  {s.active && <span className="badge active">активна</span>}
-                </td>
-                <td>{date(s.start_date)}</td>
-                <td>{s.active ? '—' : date(s.end_date)}</td>
-                <td>{duration(s.start_date, s.end_date)}</td>
-                <td>{grav(s.original_gravity)}</td>
-                <td>{grav(s.final_gravity)}</td>
-                <td>{s.abv == null ? '—' : `${s.abv.toFixed(1)}%`}</td>
-                <td>{s.attenuation == null ? '—' : `${s.attenuation.toFixed(0)}%`}</td>
+        <div className="table-wrap mobile-cards">
+          <table className="mobile-cards">
+            <thead>
+              <tr>
+                <th>Сессия</th>
+                <th>Старт</th>
+                <th>Финиш</th>
+                <th>Длит.</th>
+                <th>OG</th>
+                <th>FG</th>
+                <th>Алк.</th>
+                <th>Атт.</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr
+                  key={s.id}
+                  className="row"
+                  onClick={() => navigate(`/hydrometer-sessions/${s.id}`)}
+                >
+                  <td data-label="Сессия">
+                    {s.name ?? s.id}
+                    {s.active && <span className="badge active">активна</span>}
+                  </td>
+                  <td data-label="Старт">{date(s.start_date)}</td>
+                  <td data-label="Финиш">{s.active ? '—' : date(s.end_date)}</td>
+                  <td data-label="Длит.">{duration(s.start_date, s.end_date)}</td>
+                  <td data-label="OG">{grav(s.original_gravity)}</td>
+                  <td data-label="FG">{grav(s.final_gravity)}</td>
+                  <td data-label="Алк.">{s.abv == null ? '—' : `${s.abv.toFixed(1)}%`}</td>
+                  <td data-label="Атт.">
+                    {s.attenuation == null ? '—' : `${s.attenuation.toFixed(0)}%`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

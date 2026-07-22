@@ -25,32 +25,36 @@ export default function Brewzillas() {
       </div>
 
       <section className="panel">
-        <table className="table-in-panel">
-          <thead>
-            <tr>
-              <th>Имя</th>
-              <th>Статус</th>
-              <th>Температура</th>
-              <th>Цель</th>
-              <th>Нагрев</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((b) => (
-              <tr key={b.id} className="row" onClick={() => navigate(`/brewzillas/${b.id}`)}>
-                <td>{b.name ?? b.id}</td>
-                <td>
-                  <span className={b.active_session_id ? 'badge active' : 'badge'}>
-                    {b.active_session_id ? 'варит' : 'простой'}
-                  </span>
-                </td>
-                <td>{temp(b.temperature)}</td>
-                <td>{temp(b.target_temperature)}</td>
-                <td>{b.heating_enabled ? pct(b.heating_utilisation) : '—'}</td>
+        <div className="table-wrap mobile-cards">
+          <table className="table-in-panel mobile-cards">
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>Статус</th>
+                <th>Температура</th>
+                <th>Цель</th>
+                <th>Нагрев</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((b) => (
+                <tr key={b.id} className="row" onClick={() => navigate(`/brewzillas/${b.id}`)}>
+                  <td data-label="Имя">{b.name ?? b.id}</td>
+                  <td data-label="Статус">
+                    <span className={b.active_session_id ? 'badge active' : 'badge'}>
+                      {b.active_session_id ? 'варит' : 'простой'}
+                    </span>
+                  </td>
+                  <td data-label="Температура">{temp(b.temperature)}</td>
+                  <td data-label="Цель">{temp(b.target_temperature)}</td>
+                  <td data-label="Нагрев">
+                    {b.heating_enabled ? pct(b.heating_utilisation) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   )

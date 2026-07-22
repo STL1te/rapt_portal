@@ -80,6 +80,12 @@ function statusBadgeClass(status: SystemJob['status']): string {
   return 'badge sync-job-badge'
 }
 
+function formatJobResult(job: SystemJob): string {
+  if (job.error) return job.error
+  if (job.result == null) return '—'
+  return JSON.stringify(job.result, null, 2)
+}
+
 export default function SystemSyncs() {
   useTitle('Системные синки')
   const queryClient = useQueryClient()
@@ -261,38 +267,42 @@ export default function SystemSyncs() {
 
       <section className="panel system-jobs-history">
         <h3 className="panel-title">История sync jobs</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Тип</th>
-              <th>Статус</th>
-              <th>Создана</th>
-              <th>Завершена</th>
-              <th>Результат</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history?.items.length ? (
-              history.items.map((job) => (
-                <tr key={job.id}>
-                  <td>{describeKind(job.kind)}</td>
-                  <td>
-                    <span className={statusBadgeClass(job.status)}>{job.status}</span>
-                  </td>
-                  <td>{formatStamp(job.created_at)}</td>
-                  <td>{formatStamp(job.finished_at)}</td>
-                  <td>{job.error ?? JSON.stringify(job.result) ?? '—'}</td>
-                </tr>
-              ))
-            ) : (
+        <div className="table-wrap mobile-cards">
+          <table className="mobile-cards">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  Нет записей
-                </td>
+                <th>Тип</th>
+                <th>Статус</th>
+                <th>Создана</th>
+                <th>Завершена</th>
+                <th>Результат</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {history?.items.length ? (
+                history.items.map((job) => (
+                  <tr key={job.id}>
+                    <td data-label="Тип">{describeKind(job.kind)}</td>
+                    <td data-label="Статус">
+                      <span className={statusBadgeClass(job.status)}>{job.status}</span>
+                    </td>
+                    <td data-label="Создана">{formatStamp(job.created_at)}</td>
+                    <td data-label="Завершена">{formatStamp(job.finished_at)}</td>
+                    <td data-label="Результат">
+                      <div className="job-result">{formatJobResult(job)}</div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td data-label="Результат" colSpan={5} className="muted">
+                    Нет записей
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <div className="pagination">
           <div className="muted">
