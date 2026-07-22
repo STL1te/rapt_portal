@@ -12,8 +12,7 @@ from sqlalchemy import func, select
 from core.config import (
     LLM_API_KEY,
     LLM_BASE_URL,
-    LLM_EXTRA_BODY_JSON,
-    LLM_KEEP_ALIVE,
+    LLM_CHAT_TEMPERATURE,
     LLM_MODEL,
     LLM_TEMPERATURE,
     LLM_TIMEOUT_SECONDS,
@@ -295,10 +294,9 @@ async def assess(
     completed: bool = False,
 ) -> str:
     prompt = question or DEFAULT_INSTRUCTIONS[(kind, completed)]
+    # После первой оценки (в истории уже есть реплики) отвечаем свободнее.
+    temperature = LLM_CHAT_TEMPERATURE if history else LLM_TEMPERATURE
     system_prompt = FERMENTATION_SYSTEM_PROMPT if kind == "fermentation" else BREW_SYSTEM_PROMPT
-    extra_body = json.loads(LLM_EXTRA_BODY_JSON) if LLM_EXTRA_BODY_JSON else {}
-    if LLM_KEEP_ALIVE:
-        extra_body["keep_alive"] = LLM_KEEP_ALIVE
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
         *history,
@@ -324,9 +322,8 @@ async def assess(
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                temperature=LLM_TEMPERATURE,
+                temperature=temperature,
                 top_p=LLM_TOP_P,
-                extra_body=extra_body or None,
             )
             message = response.choices[0].message
             if not message.tool_calls:

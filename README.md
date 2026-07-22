@@ -78,12 +78,10 @@ LLM_BASE_URL=http://host.docker.internal:11434/v1
 LLM_API_KEY=ollama
 LLM_MODEL=qwen3:8b
 LLM_TIMEOUT_SECONDS=900
-LLM_KEEP_ALIVE=30m
 ```
 
 `LLM_TIMEOUT_SECONDS` allows the first request to wait while Ollama loads a
-model into VRAM. `LLM_KEEP_ALIVE` keeps an Ollama model loaded; clear it when
-using a cloud OpenAI-compatible provider.
+model into VRAM.
 
 Start the stack:
 
@@ -230,11 +228,9 @@ Root `.env`:
   Ollama at `http://host.docker.internal:11434/v1`.
 - `LLM_API_KEY` - API key; Ollama accepts the placeholder `ollama`.
 - `LLM_MODEL` - model name. Default: `qwen3:8b`.
-- `LLM_TEMPERATURE`, `LLM_TOP_P` - standard generation controls.
-- `LLM_EXTRA_BODY_JSON` - provider-specific request body; the default holds
-  Ollama generation options.
 - `LLM_TIMEOUT_SECONDS` - maximum LLM request time. Default: `900` seconds.
-- `LLM_KEEP_ALIVE` - optional Ollama residency duration, for example `30m`.
+
+Generation controls (temperature, top_p) are hardcoded in `core/config.py`.
 
 ## Data Notes
 

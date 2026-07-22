@@ -123,9 +123,8 @@ docker compose down
   session id changes or disappears during a sync.
 - Do not commit secrets. Runtime secrets belong in `backend/.env`, which is
   gitignored.
-- Keep the AI backend OpenAI-compatible. Ollama-only controls belong in
-  `LLM_EXTRA_BODY_JSON` or `LLM_KEEP_ALIVE`, so cloud providers can disable
-  them through configuration.
+- Keep the AI backend OpenAI-compatible. Avoid Ollama-only request controls
+  that break other providers.
 - The LLM may only access local session data through the whitelisted tools in
   `backend/features/ai/services.py`; never expose SQL, arbitrary URLs, filesystem access or write
   operations to the model.
