@@ -13,6 +13,8 @@ The app currently supports:
 - Docker Compose deployment with nginx serving the SPA and proxying `/api` to
   FastAPI.
 - Alembic migrations for schema management.
+- Local AI assistant for brewing and fermentation assessments through an
+  OpenAI-compatible LLM API (Ollama by default).
 
 ## Architecture
 
@@ -67,6 +69,21 @@ RAPT_USERNAME=you@example.com
 RAPT_SECRET=your-api-secret-here
 DATABASE_URL=postgresql://user:password@db-host/rapt_portal
 ```
+
+For the local Ollama assistant, leave the LLM defaults from `.env.example` or
+configure them explicitly:
+
+```env
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_API_KEY=ollama
+LLM_MODEL=qwen3:8b
+LLM_TIMEOUT_SECONDS=900
+LLM_KEEP_ALIVE=30m
+```
+
+`LLM_TIMEOUT_SECONDS` allows the first request to wait while Ollama loads a
+model into VRAM. `LLM_KEEP_ALIVE` keeps an Ollama model loaded; clear it when
+using a cloud OpenAI-compatible provider.
 
 Start the stack:
 
@@ -165,6 +182,18 @@ BrewZillas:
 - `GET /api/brew-sessions/{session_id}`
 - `GET /api/brew-sessions/{session_id}/telemetry?start=...&end=...`
 
+AI:
+
+- `POST /api/ai/assessments` - assesses a brewing or fermentation session.
+  The request contains `kind`, `session_id`, `question` and recent chat
+  `history`; the backend always rebuilds current local telemetry context.
+
+The assistant can use read-only tools to list brewing or fermentation sessions,
+search sessions by name and load a selected session's context. This lets a user
+ask for a comparison by name, such as “сравни с предыдущей тропиканкой”, without
+entering a session ID. The model never receives database credentials or direct
+SQL access.
+
 ## Frontend Routes
 
 - `/` - dashboard.
@@ -187,6 +216,15 @@ Root `.env`:
 - `RAPT_SECRET` - RAPT API secret/password used for token exchange.
 - `DATABASE_URL` - SQLAlchemy database URL. Example: `postgresql://user:password@localhost/rapt_portal`.
 - `SYNC_INTERVAL_SECONDS` - background sync interval. Default: `60`.
+- `LLM_BASE_URL` - OpenAI-compatible chat-completions base URL. Default:
+  Ollama at `http://host.docker.internal:11434/v1`.
+- `LLM_API_KEY` - API key; Ollama accepts the placeholder `ollama`.
+- `LLM_MODEL` - model name. Default: `qwen3:8b`.
+- `LLM_TEMPERATURE`, `LLM_TOP_P` - standard generation controls.
+- `LLM_EXTRA_BODY_JSON` - provider-specific request body; the default holds
+  Ollama generation options.
+- `LLM_TIMEOUT_SECONDS` - maximum LLM request time. Default: `900` seconds.
+- `LLM_KEEP_ALIVE` - optional Ollama residency duration, for example `30m`.
 
 ## Data Notes
 

@@ -27,6 +27,10 @@ RAPT Portal is a local dashboard for RAPT devices:
 - `backend/db.py` - SQLAlchemy models and database initialization.
 - `backend/routers/` - local API routes.
 - `backend/serializers.py` - ORM row to API response helpers.
+- `backend/ai.py` - OpenAI-compatible LLM client, session-context builders and
+  whitelisted tool-use loop.
+- `backend/prompts/` - UTF-8 Russian system prompts for brewing and fermentation.
+- `backend/routers/ai.py` - local AI assessment API.
 - `frontend/src/api.ts` - frontend API types and fetch helpers.
 - `frontend/src/App.tsx` - SPA route map and navigation.
 - `frontend/src/pages/` - page-level React views.
@@ -106,6 +110,15 @@ docker compose down
   session id changes or disappears during a sync.
 - Do not commit secrets. Runtime secrets belong in `backend/.env`, which is
   gitignored.
+- Keep the AI backend OpenAI-compatible. Ollama-only controls belong in
+  `LLM_EXTRA_BODY_JSON` or `LLM_KEEP_ALIVE`, so cloud providers can disable
+  them through configuration.
+- The LLM may only access local session data through the whitelisted tools in
+  `backend/ai.py`; never expose SQL, arbitrary URLs, filesystem access or write
+  operations to the model.
+- Keep AI context focused on brewing: omit device-health fields such as battery
+  and RSSI unless a feature explicitly needs them. Preserve UTF-8 Cyrillic in
+  prompt files and require Russian answers there.
 - `data/rapt.db` is local runtime data. Do not modify, delete, or include it in
   source changes unless the user explicitly asks for database work.
 - Some existing UI strings appear to have encoding damage. Do not mass-rewrite
@@ -152,6 +165,8 @@ For backend changes:
   startup changes.
 - Use `uv run python rapt_client.py` only when credentials/network access are
   available and the change touches upstream API behavior.
+- Run `uv run python scripts/test_ai.py` when changing AI prompts, context,
+  tools or the LLM client.
 
 For frontend changes:
 
