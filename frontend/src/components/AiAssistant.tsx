@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { assessSession, type AiChatMessage } from '@/api'
 
 type Props = {
@@ -9,8 +11,8 @@ type Props = {
 }
 
 const DEFAULT_QUESTIONS = {
-  fermentation: 'Оцени текущее состояние брожения и назови следующие разумные действия.',
-  brew: 'Оцени ход варки относительно профиля и назови следующие разумные действия.',
+  fermentation: 'Как идёт брожение?',
+  brew: 'Как идёт варка?',
 } as const
 
 export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
@@ -107,7 +109,11 @@ export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
         <div className="ai-chat-messages" aria-live="polite">
           {messages.map((message, index) => (
             <article key={`${message.role}-${index}`} className={`ai-bubble ${message.role}`}>
-              {message.content}
+              {message.role === 'assistant' ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+              ) : (
+                message.content
+              )}
             </article>
           ))}
           {isLoading && (
