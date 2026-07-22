@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getYeasts } from '../api'
-import { temp } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getYeasts } from '@/api'
+import { temp } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 type StatIcon =
   | 'fa-industry'

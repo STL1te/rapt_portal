@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getHydrometerSession, getHydrometerTelemetry } from '../api'
-import AiAssistant from '../components/AiAssistant'
-import HydrometerChart from '../components/HydrometerChart'
-import { brix, date, duration, grav, sg } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getHydrometerSession, getHydrometerTelemetry } from '@/api'
+import AiAssistant from '@/components/AiAssistant'
+import HydrometerChart from '@/components/HydrometerChart'
+import { brix, date, duration, grav, sg } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 function parseUtc(value: string) {
   return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()

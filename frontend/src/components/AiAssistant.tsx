@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { assessSession, type AiChatMessage } from '../api'
+import { assessSession, type AiChatMessage } from '@/api'
 
 type Props = {
   kind: 'brew' | 'fermentation'

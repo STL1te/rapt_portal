@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getBrewSession } from '../api'
-import AiAssistant from '../components/AiAssistant'
-import BrewChart from '../components/BrewChart'
-import { temp, date, durationHm, stepLen, pct } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getBrewSession } from '@/api'
+import AiAssistant from '@/components/AiAssistant'
+import BrewChart from '@/components/BrewChart'
+import { temp, date, durationHm, stepLen, pct } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 function MetricCard({
   label,

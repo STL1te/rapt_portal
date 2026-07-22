@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getBrewSessions, getBrewzillas } from '../api'
-import { date, durationHm } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getBrewSessions, getBrewzillas } from '@/api'
+import { date, durationHm } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 export default function BrewZillaDetail() {
   const { id } = useParams<{ id: string }>()

@@ -12,8 +12,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { HydrometerTelemetryPoint } from '../api'
-import { grav, temp } from '../fmt'
+import type { HydrometerTelemetryPoint } from '@/api'
+import { grav, temp } from '@/lib/fmt'
 
 type RangePreset = '24h' | '3d' | '7d' | 'all'
 

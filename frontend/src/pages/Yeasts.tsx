@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { getYeasts, type Yeast } from '../api'
-import { temp } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getYeasts, type Yeast } from '@/api'
+import { temp } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 const PAGE_SIZE = 12
 const SORT_OPTIONS = [

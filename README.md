@@ -153,6 +153,16 @@ npm run dev
 The frontend runs at `http://localhost:5173`. Vite proxies `/api` to
 `http://localhost:8000`, so the backend should be running separately.
 
+Source layout (`frontend/src`):
+
+- `api/` - fetch client and per-domain endpoint modules; import from `@/api`.
+- `types/` - API response types by domain; import from `@/types`.
+- `lib/` - framework-agnostic helpers (`fmt.ts`).
+- `hooks/` - React hooks.
+- `pages/`, `components/` - page views and shared UI.
+
+Imports use the `@/` alias (`@` -> `src`) instead of relative `../` chains.
+
 Useful commands:
 
 ```bash

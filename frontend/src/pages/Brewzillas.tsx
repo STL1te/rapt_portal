@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { getBrewzillas } from '../api'
-import { pct, temp } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getBrewzillas } from '@/api'
+import { pct, temp } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 export default function Brewzillas() {
   useTitle('Пивоварни')

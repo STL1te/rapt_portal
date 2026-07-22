@@ -36,10 +36,18 @@ RAPT Portal is a local dashboard for RAPT devices:
   session-context builders and whitelisted tool-use loop.
 - `backend/features/system/services.py` - DB-backed background sync jobs.
 - `backend/prompts/` - UTF-8 Russian system prompts for brewing and fermentation.
-- `frontend/src/api.ts` - frontend API types and fetch helpers.
+- `frontend/src/api/` - fetch helpers (`client.ts`) plus one module per domain
+  (`hydrometers`, `brew`, `yeasts`, `system`, `ai`); `index.ts` re-exports the
+  endpoints and their types, so callers import from `@/api`.
+- `frontend/src/types/` - API response types, split by domain, re-exported from
+  `types/index.ts` (`@/types`).
+- `frontend/src/lib/` - framework-agnostic helpers (`fmt.ts` formatting).
+- `frontend/src/hooks/` - React hooks (`useTitle.ts`).
 - `frontend/src/App.tsx` - SPA route map and navigation.
 - `frontend/src/pages/` - page-level React views.
 - `frontend/src/components/` - chart and shared UI components.
+- Imports inside `frontend/src` use the `@/` alias (`@` -> `src`), configured in
+  `vite.config.ts` and `tsconfig.app.json`. Prefer it over `../` chains.
 
 ## RAPT API Context
 
@@ -108,7 +116,7 @@ docker compose down
   readable Cyrillic before handoff.
 - Prefer existing simple module-level helpers over adding abstractions.
 - Keep local API response field names in snake_case; the frontend types in
-  `frontend/src/api.ts` mirror those names.
+  `frontend/src/types/` mirror those names.
 - Preserve the append-only telemetry model and deduplication by timestamp.
 - Keep timestamps normalized the same way as `sync._dt`: naive UTC in SQLite.
 - Be careful around session close behavior. A session is closed when the active

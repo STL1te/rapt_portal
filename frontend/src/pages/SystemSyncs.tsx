@@ -9,8 +9,8 @@ import {
   triggerYeastSync,
   type SystemJob,
   type SystemJobHistoryPage,
-} from '../api'
-import { useTitle } from '../useTitle'
+} from '@/api'
+import { useTitle } from '@/hooks/useTitle'
 
 type JobKind = 'base_sync' | 'portal_sync' | 'yeast_sync'
 

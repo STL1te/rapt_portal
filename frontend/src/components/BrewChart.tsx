@@ -13,8 +13,8 @@ import {
   Brush,
   ResponsiveContainer,
 } from 'recharts'
-import { temp } from '../fmt'
-import { getBrewTelemetry, type BrewSession } from '../api'
+import { temp } from '@/lib/fmt'
+import { getBrewTelemetry, type BrewSession } from '@/api'
 
 type RangePreset = '24h' | '3d' | '7d' | 'all'
 

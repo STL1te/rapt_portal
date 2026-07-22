@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { getHydrometers } from '../api'
-import { grav, pct, temp } from '../fmt'
-import { useTitle } from '../useTitle'
+import { getHydrometers } from '@/api'
+import { grav, pct, temp } from '@/lib/fmt'
+import { useTitle } from '@/hooks/useTitle'
 
 export default function Hydrometers() {
   useTitle('Гидрометры')
