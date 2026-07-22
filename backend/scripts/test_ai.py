@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from features.ai.services import DEFAULT_QUESTIONS, TOOLS, _sample, assess
+from features.ai.services import DEFAULT_INSTRUCTIONS, TOOLS, _sample, assess
 
 
 class _Client:
@@ -87,7 +87,7 @@ async def main() -> None:
     assert answer == "Done."
     assert client.request["model"]
     assert client.request["messages"][1] == {"role": "user", "content": "Clarify risks."}
-    assert DEFAULT_QUESTIONS["brew"] in client.request["messages"][2]["content"]
+    assert DEFAULT_INSTRUCTIONS[("brew", False)] in client.request["messages"][2]["content"]
     assert (
         '<current_session_context>{"current_session":{}}</current_session_context>'
         in client.request["messages"][2]["content"]
@@ -109,6 +109,11 @@ async def main() -> None:
     run_tool.assert_called_once_with(
         "current", "search_sessions", {"query": "tropicana", "kind": "brew"}
     )
+
+    done_client = _Client()
+    with patch("features.ai.services.AsyncOpenAI", return_value=done_client):
+        await assess("brew", "id", '{"current_session":{}}', None, completed=True)
+    assert DEFAULT_INSTRUCTIONS[("brew", True)] in done_client.request["messages"][1]["content"]
 
 
 if __name__ == "__main__":

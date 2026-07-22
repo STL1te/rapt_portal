@@ -194,6 +194,7 @@ export default function HydrometerSessionPage() {
         key={s.id}
         kind="fermentation"
         sessionId={s.id}
+        completed={!s.active}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
       />

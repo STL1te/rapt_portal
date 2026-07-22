@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from core.config import LLM_MODEL
 from core.db import SessionLocal
 
-from .services import DEFAULT_QUESTIONS, assess, build_context
+from .services import DEFAULT_QUESTIONS, assess, build_context, is_session_completed
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,6 +35,7 @@ async def create_assessment(request: AssessmentRequest) -> dict:
             context = build_context(db, request.kind, request.session_id, None)
         except LookupError as error:
             raise HTTPException(404, str(error)) from error
+        completed = is_session_completed(db, request.kind, request.session_id)
 
     try:
         answer = await assess(
@@ -43,6 +44,7 @@ async def create_assessment(request: AssessmentRequest) -> dict:
             context,
             request.question,
             [message.model_dump() for message in request.history],
+            completed=completed,
         )
     except APIConnectionError as error:
         logger.warning("LLM unavailable at %s: %s", LLM_MODEL, error)
@@ -54,5 +56,5 @@ async def create_assessment(request: AssessmentRequest) -> dict:
     return {
         "answer": answer,
         "model": LLM_MODEL,
-        "question": request.question or DEFAULT_QUESTIONS[request.kind],
+        "question": request.question or DEFAULT_QUESTIONS[(request.kind, completed)],
     }

@@ -6,16 +6,18 @@ import { assessSession, type AiChatMessage } from '@/api'
 type Props = {
   kind: 'brew' | 'fermentation'
   sessionId: string
+  completed: boolean
   open: boolean
   onClose: () => void
 }
 
+// Держим в синхроне с DEFAULT_QUESTIONS в backend/features/ai/services.py.
 const DEFAULT_QUESTIONS = {
-  fermentation: 'Как идёт брожение?',
-  brew: 'Как идёт варка?',
+  fermentation: { active: 'Как идёт брожение?', done: 'Как прошло брожение?' },
+  brew: { active: 'Как идёт варка?', done: 'Как прошла варка?' },
 } as const
 
-export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
+export default function AiAssistant({ kind, sessionId, completed, open, onClose }: Props) {
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [question, setQuestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -27,9 +29,10 @@ export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
 
   const ask = useCallback(
     async (nextQuestion: string | null, history: AiChatMessage[]) => {
-      const sentQuestion = nextQuestion ?? DEFAULT_QUESTIONS[kind]
+      const sentQuestion = nextQuestion ?? DEFAULT_QUESTIONS[kind][completed ? 'done' : 'active']
       const nextMessages = [...history, { role: 'user' as const, content: sentQuestion }]
       setMessages(nextMessages)
+      setQuestion('')
       setIsLoading(true)
       setError(null)
       try {
@@ -44,14 +47,13 @@ export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
           { role: 'user', content: assessment.question },
           { role: 'assistant', content: assessment.answer },
         ])
-        setQuestion('')
       } catch (requestError) {
         setError(String(requestError))
       } finally {
         setIsLoading(false)
       }
     },
-    [kind, sessionId],
+    [kind, sessionId, completed],
   )
 
   useEffect(() => {
@@ -135,6 +137,12 @@ export default function AiAssistant({ kind, sessionId, open, onClose }: Props) {
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                if (question.trim() && !isLoading) void ask(question.trim(), messages)
+              }
+            }}
             placeholder="Сообщение AI-ассистенту…"
             maxLength={2000}
             disabled={isLoading}

@@ -9,20 +9,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Route our module loggers to stdout next to uvicorn's; without this INFO/ERROR
-# from our own code (e.g. swallowed LLM errors) never surfaces.
+# from our own code (e.g. swallowed LLM errors) never surfaces. Feature routers
+# import below this on purpose, so logging is configured before they load.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-from core.config import SYNC_INTERVAL_SECONDS
-from features.ai.router import router as ai_router
-from features.brewzillas.router import router as brewzillas_router
-from features.hydrometers.router import router as hydrometers_router
-from features.system.router import router as system_router
-from features.system.services import ensure_interval_base_sync, finalize_stale_jobs
-from features.yeasts.router import router as yeasts_router
+from core.config import SYNC_INTERVAL_SECONDS  # noqa: E402
+from features.ai.router import router as ai_router  # noqa: E402
+from features.brewzillas.router import router as brewzillas_router  # noqa: E402
+from features.hydrometers.router import router as hydrometers_router  # noqa: E402
+from features.system.router import router as system_router  # noqa: E402
+from features.system.services import ensure_interval_base_sync, finalize_stale_jobs  # noqa: E402
+from features.yeasts.router import router as yeasts_router  # noqa: E402
 
 
 async def _sync_loop() -> None:

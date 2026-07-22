@@ -140,6 +140,7 @@ export default function BrewSessionPage() {
         key={s.id}
         kind="brew"
         sessionId={s.id}
+        completed={!s.active}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
       />

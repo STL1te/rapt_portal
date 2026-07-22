@@ -29,36 +29,31 @@ _MAX_TOOL_ROUNDS = 4
 _MAX_LISTED_SESSIONS = 30
 _PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
-FERMENTATION_SYSTEM_PROMPT = (_PROMPTS_DIR / "fermentation.md").read_text(encoding="utf-8")
-BREW_SYSTEM_PROMPT = (_PROMPTS_DIR / "brew.md").read_text(encoding="utf-8")
 
-DEFAULT_QUESTIONS: dict[AssessmentKind, str] = {
-    "fermentation": "Как идёт брожение?",
-    "brew": "Как идёт варка?",
+def _load_prompt(name: str) -> str:
+    return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
+
+
+FERMENTATION_SYSTEM_PROMPT = _load_prompt("fermentation.md")
+BREW_SYSTEM_PROMPT = _load_prompt("brew.md")
+
+# Короткий вопрос, который фронт показывает в чате как реплику пользователя.
+# Ключ — (тип сессии, завершена ли она): у активной и прошедшей сессии разный текст.
+DEFAULT_QUESTIONS: dict[tuple[AssessmentKind, bool], str] = {
+    ("fermentation", False): "Как идёт брожение?",
+    ("fermentation", True): "Как прошло брожение?",
+    ("brew", False): "Как идёт варка?",
+    ("brew", True): "Как прошла варка?",
 }
 
 # Что реально уходит в модель на дефолтный запрос — фронт показывает короткий
 # DEFAULT_QUESTIONS, а модель получает эту директиву, чтобы не переспрашивать.
-DEFAULT_INSTRUCTIONS: dict[AssessmentKind, str] = {
-    "fermentation": (
-        "Дай полную технологическую оценку текущего брожения строго по данным из контекста. "
-        "Разбери: динамику плотности (OG, текущая, целевой FG) и степень сбраживания, "
-        "соответствие температуры диапазону дрожжей, признаки замедления, остановки или "
-        "завершения брожения. Каждый раздел оформи markdown-заголовком с новой строки "
-        "(## Итог, ## Наблюдения, ## Риски, ## Следующие действия), а содержание — абзацем "
-        "под ним. Не задавай уточняющих вопросов и не предлагай выбрать вид "
-        "анализа — сразу выполняй оценку. Заверши ответ разделом «Следующие действия»; не "
-        "предлагай визуализацию, графики, таблицы или дополнительный анализ."
-    ),
-    "brew": (
-        "Дай полную технологическую оценку текущей варки строго по данным из контекста. "
-        "Разбери: выполнение профиля и текущий шаг, отклонения температуры котла и сусла от "
-        "целевых, динамику нагрева. Каждый раздел оформи markdown-заголовком с новой строки "
-        "(## Итог, ## Наблюдения, ## Риски, ## Следующие действия), а содержание — абзацем "
-        "под ним. Не задавай уточняющих вопросов и не предлагай выбрать "
-        "вид анализа — сразу выполняй оценку. Заверши ответ разделом «Следующие действия»; "
-        "не предлагай визуализацию, графики, таблицы или дополнительный анализ."
-    ),
+# Для активной сессии — оценка «сейчас», для завершённой — ретроспективный разбор.
+DEFAULT_INSTRUCTIONS: dict[tuple[AssessmentKind, bool], str] = {
+    ("fermentation", False): _load_prompt("fermentation_default_active.md"),
+    ("fermentation", True): _load_prompt("fermentation_default_done.md"),
+    ("brew", False): _load_prompt("brew_default_active.md"),
+    ("brew", True): _load_prompt("brew_default_done.md"),
 }
 
 TOOLS = [
@@ -221,6 +216,12 @@ def build_context(
     return json.dumps(context, ensure_ascii=False, default=str, separators=(",", ":"))
 
 
+def is_session_completed(db, kind: AssessmentKind, session_id: str) -> bool:
+    model = BrewSession if kind == "brew" else HydrometerSession
+    session = db.get(model, session_id)
+    return bool(session and not session.active)
+
+
 def _search_sessions(kind: AssessmentKind, query: str, current_session_id: str) -> list[dict]:
     model = BrewSession if kind == "brew" else HydrometerSession
     with SessionLocal() as db:
@@ -291,8 +292,9 @@ async def assess(
     context: str,
     question: str | None,
     history: Sequence[dict[str, str]] = (),
+    completed: bool = False,
 ) -> str:
-    prompt = question or DEFAULT_INSTRUCTIONS[kind]
+    prompt = question or DEFAULT_INSTRUCTIONS[(kind, completed)]
     system_prompt = FERMENTATION_SYSTEM_PROMPT if kind == "fermentation" else BREW_SYSTEM_PROMPT
     extra_body = json.loads(LLM_EXTRA_BODY_JSON) if LLM_EXTRA_BODY_JSON else {}
     if LLM_KEEP_ALIVE:

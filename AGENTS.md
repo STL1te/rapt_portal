@@ -142,6 +142,12 @@ docker compose down
   reads/writes. For Python console scripts on Windows, avoid printing raw
   non-ASCII device names unless stdout is known to be UTF-8; use a safe
   escaped/logging representation when needed.
+- Run backend scripts and tools through `uv run` (e.g. `uv run python
+  scripts/test_ai.py`). Do not invoke a bare `python` or the `.venv`
+  interpreter directly; `uv run` resolves the project environment.
+- The AI default questions live in `DEFAULT_QUESTIONS` in
+  `backend/features/ai/services.py` and are mirrored in
+  `frontend/src/components/AiAssistant.tsx`. Keep both in sync when changing them.
 - The shell here is PowerShell. Do not use `&&` as a command separator; run
   commands separately or use PowerShell-valid control flow.
 - Before committing code changes, run the project formatter for the touched
