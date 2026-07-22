@@ -90,6 +90,14 @@ async def get_brewzilla_telemetry(
     return await get("/api/BrewZillas/GetTelemetry", params)
 
 
+async def get_profiles() -> list[dict]:
+    return await get("/api/Profiles/GetProfiles")
+
+
+async def get_profile_types() -> list[dict]:
+    return await get("/api/ProfileTypes/GetAll")
+
+
 async def demo() -> None:
     """Sanity check: log in and dump the first hydrometer's raw JSON."""
     import json

@@ -8,6 +8,8 @@ import Dashboard from '@/pages/Dashboard'
 import HydrometerDetail from '@/pages/HydrometerDetail'
 import Hydrometers from '@/pages/Hydrometers'
 import HydrometerSessionPage from '@/pages/HydrometerSessionPage'
+import RecipeDetail from '@/pages/RecipeDetail'
+import Recipes from '@/pages/Recipes'
 import SystemSyncs from '@/pages/SystemSyncs'
 import YeastDetail from '@/pages/YeastDetail'
 import Yeasts from '@/pages/Yeasts'
@@ -16,6 +18,7 @@ const primaryNavItems = [
   { to: '/', label: 'Дашборд', icon: 'fa-solid fa-gauge-high', end: true },
   { to: '/hydrometers', label: 'Гидрометры', icon: 'fa-solid fa-flask', end: false },
   { to: '/brewzillas', label: 'Пивоварни', icon: 'fa-solid fa-fire-burner', end: false },
+  { to: '/recipes', label: 'Рецепты', icon: 'fa-solid fa-scroll', end: false },
   { to: '/yeasts', label: 'Дрожжи', icon: 'fa-solid fa-vial', end: false },
 ] as const
 
@@ -104,6 +107,8 @@ export default function App() {
           <Route path="/brewzillas" element={<Brewzillas />} />
           <Route path="/brewzillas/:id" element={<BrewZillaDetail />} />
           <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />
+          <Route path="/recipes" element={<Recipes />} />
+          <Route path="/recipes/:id" element={<RecipeDetail />} />
           <Route path="/yeasts" element={<Yeasts />} />
           <Route path="/yeasts/:id" element={<YeastDetail />} />
           <Route path="/system-syncs" element={<SystemSyncs />} />

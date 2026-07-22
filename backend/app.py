@@ -21,6 +21,7 @@ from core.config import SYNC_INTERVAL_SECONDS  # noqa: E402
 from features.ai.router import router as ai_router  # noqa: E402
 from features.brewzillas.router import router as brewzillas_router  # noqa: E402
 from features.hydrometers.router import router as hydrometers_router  # noqa: E402
+from features.profiles.router import router as profiles_router  # noqa: E402
 from features.system.router import router as system_router  # noqa: E402
 from features.system.services import ensure_interval_base_sync, finalize_stale_jobs  # noqa: E402
 from features.yeasts.router import router as yeasts_router  # noqa: E402
@@ -56,5 +57,6 @@ app.add_middleware(
 app.include_router(system_router)
 app.include_router(hydrometers_router)
 app.include_router(brewzillas_router)
+app.include_router(profiles_router)
 app.include_router(yeasts_router)
 app.include_router(ai_router)

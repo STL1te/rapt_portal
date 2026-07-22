@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable
 
 from core import sync
 from core.db import SessionLocal, SystemJob
+from features.profiles.services import sync_profiles
 from features.yeasts.services import sync_yeasts
 from scripts.portal_data_sync import portal_data_sync
 
@@ -18,11 +19,13 @@ _start_locks = {
     "base_sync": asyncio.Lock(),
     "portal_sync": asyncio.Lock(),
     "yeast_sync": asyncio.Lock(),
+    "profile_sync": asyncio.Lock(),
 }
 _run_locks = {
     "base_sync": asyncio.Lock(),
     "portal_sync": asyncio.Lock(),
     "yeast_sync": asyncio.Lock(),
+    "profile_sync": asyncio.Lock(),
 }
 
 
@@ -127,6 +130,15 @@ async def start_yeast_sync_job(portal_token: str) -> dict[str, Any]:
         return {"status": "ok", "count": count}
 
     return await _start_job("yeast_sync", runner)
+
+
+async def start_profile_sync_job(portal_token: str) -> dict[str, Any]:
+    async def runner() -> dict[str, Any]:
+        async with _run_locks["profile_sync"]:
+            count = await asyncio.to_thread(sync_profiles, portal_token)
+        return {"status": "ok", "count": count}
+
+    return await _start_job("profile_sync", runner)
 
 
 async def run_base_sync() -> dict[str, Any]:

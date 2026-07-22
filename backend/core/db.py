@@ -137,6 +137,28 @@ class BrewTelemetry(Base):
     rssi: Mapped[float | None] = mapped_column(Float)
 
 
+class Profile(Base):
+    """RAPT brew/ferment profile (recipe) library, synced from the public API.
+
+    Steps and alerts are kept as JSON text like BrewSession.profile_json; the
+    recipe editor can normalize later if it needs per-step rows.
+    """
+
+    __tablename__ = "profiles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    public: Mapped[bool] = mapped_column(Boolean, default=False)
+    rating: Mapped[float | None] = mapped_column(Float)
+    profile_type_id: Mapped[str | None] = mapped_column(String, index=True)
+    profile_type_name: Mapped[str | None] = mapped_column(String)
+    steps_json: Mapped[str | None] = mapped_column(Text)  # ProfileStepModel[]
+    alerts_json: Mapped[str | None] = mapped_column(Text)  # ProfileAlertModel[]
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class SystemJob(Base):
     __tablename__ = "system_jobs"
 

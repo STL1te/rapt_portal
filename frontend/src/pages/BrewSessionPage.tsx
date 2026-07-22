@@ -4,32 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getBrewSession } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import BrewChart from '@/components/BrewChart'
+import MetricCard from '@/components/MetricCard'
 import { temp, date, durationHm, stepLen, pct } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
-
-function MetricCard({
-  label,
-  value,
-  sub,
-  icon,
-  tone,
-}: {
-  label: string
-  value: string
-  sub?: string
-  icon: string
-  tone?: 'ok' | 'warn' | 'quiet' | 'info'
-}) {
-  return (
-    <div className={tone ? `stat stat-${tone}` : 'stat'}>
-      <span className="stat-label">
-        <i className={icon} /> {label}
-      </span>
-      <span className="stat-value">{value}</span>
-      {sub && <span className="stat-sub">{sub}</span>}
-    </div>
-  )
-}
 
 function fmtDelta(value: number | null) {
   if (value == null) return '—'

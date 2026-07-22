@@ -3,6 +3,7 @@
 export type * from '@/types'
 export * from './hydrometers'
 export * from './brew'
+export * from './profiles'
 export * from './yeasts'
 export * from './system'
 export * from './ai'

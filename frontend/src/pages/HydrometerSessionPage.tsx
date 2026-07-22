@@ -4,35 +4,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getHydrometerSession, getHydrometerTelemetry } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import HydrometerChart from '@/components/HydrometerChart'
+import MetricCard from '@/components/MetricCard'
 import { brix, date, duration, grav, sg } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
 
 function parseUtc(value: string) {
   return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
-}
-
-function MetricCard({
-  label,
-  value,
-  sub,
-  icon,
-  tone,
-}: {
-  label: string
-  value: string
-  sub?: string
-  icon: string
-  tone?: 'ok' | 'warn' | 'quiet' | 'info'
-}) {
-  return (
-    <div className={tone ? `stat stat-${tone}` : 'stat'}>
-      <span className="stat-label">
-        <i className={icon} /> {label}
-      </span>
-      <span className="stat-value">{value}</span>
-      {sub && <span className="stat-sub">{sub}</span>}
-    </div>
-  )
 }
 
 export default function HydrometerSessionPage() {

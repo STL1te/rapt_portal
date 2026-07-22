@@ -5,6 +5,7 @@ import {
   getSystemJobHistory,
   getSystemJob,
   triggerPortalDataSync,
+  triggerProfileSync,
   triggerSync,
   triggerYeastSync,
   type SystemJob,
@@ -12,7 +13,13 @@ import {
 } from '@/api'
 import { useTitle } from '@/hooks/useTitle'
 
-type JobKind = 'base_sync' | 'portal_sync' | 'yeast_sync'
+type JobKind = 'base_sync' | 'portal_sync' | 'yeast_sync' | 'profile_sync'
+
+const JOB_KINDS: readonly JobKind[] = ['base_sync', 'portal_sync', 'yeast_sync', 'profile_sync']
+
+function isJobKind(kind: string): kind is JobKind {
+  return (JOB_KINDS as readonly string[]).includes(kind)
+}
 
 type SyncCardProps = {
   title: string
@@ -70,6 +77,7 @@ function describeKind(kind: string): string {
   if (kind === 'base_sync') return 'Обычный sync'
   if (kind === 'portal_sync') return 'Portal data sync'
   if (kind === 'yeast_sync') return 'Sync yeasts'
+  if (kind === 'profile_sync') return 'Sync profiles'
   return kind
 }
 
@@ -105,11 +113,7 @@ export default function SystemSyncs() {
         setJobsByKind(() => {
           const next: Partial<Record<JobKind, SystemJob>> = {}
           for (const job of jobs) {
-            if (
-              job.kind === 'base_sync' ||
-              job.kind === 'portal_sync' ||
-              job.kind === 'yeast_sync'
-            ) {
+            if (isJobKind(job.kind)) {
               next[job.kind] = job
             }
           }
@@ -167,7 +171,7 @@ export default function SystemSyncs() {
       setJobsByKind((current) => {
         const next = { ...current }
         for (const job of updates) {
-          if (job.kind === 'base_sync' || job.kind === 'portal_sync' || job.kind === 'yeast_sync') {
+          if (isJobKind(job.kind)) {
             next[job.kind] = job
           }
         }
@@ -178,6 +182,7 @@ export default function SystemSyncs() {
         await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
         await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
         await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
+        await queryClient.invalidateQueries({ queryKey: ['profiles'] })
         const next = await getSystemJobHistory(historyPage, 20)
         setHistory(next)
       }
@@ -194,10 +199,12 @@ export default function SystemSyncs() {
   const baseJob = jobsByKind.base_sync ?? null
   const portalJob = jobsByKind.portal_sync ?? null
   const yeastJob = jobsByKind.yeast_sync ?? null
+  const profileJob = jobsByKind.profile_sync ?? null
 
   const baseState = useMemo(() => describeJob(baseJob), [baseJob])
   const portalState = useMemo(() => describeJob(portalJob), [portalJob])
   const yeastState = useMemo(() => describeJob(yeastJob), [yeastJob])
+  const profileState = useMemo(() => describeJob(profileJob), [profileJob])
   const totalPages = history ? Math.max(1, Math.ceil(history.total / history.page_size)) : 1
 
   return (
@@ -262,6 +269,16 @@ export default function SystemSyncs() {
           statusText={yeastState.text}
           statusTone={yeastState.tone}
           onRun={() => startJob('yeast_sync', () => triggerYeastSync(portalToken))}
+        />
+
+        <SyncCard
+          title="Sync profiles"
+          description="Обновляет локальную библиотеку рецептов (с алертами) из portal API."
+          actionLabel="Запустить"
+          disabled={isActive(profileJob) || !portalToken.trim()}
+          statusText={profileState.text}
+          statusTone={profileState.tone}
+          onRun={() => startJob('profile_sync', () => triggerProfileSync(portalToken))}
         />
       </div>
 

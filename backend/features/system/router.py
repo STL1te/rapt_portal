@@ -9,6 +9,7 @@ from .services import (
     list_job_history,
     start_base_sync_job,
     start_portal_sync_job,
+    start_profile_sync_job,
     start_yeast_sync_job,
 )
 
@@ -41,6 +42,11 @@ async def trigger_portal_data_sync(payload: PortalSyncRequest) -> dict:
 @router.post("/api/sync_yeasts", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
     return await start_yeast_sync_job(payload.portal_token)
+
+
+@router.post("/api/sync_profiles", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_sync_profiles(payload: PortalTokenRequest) -> dict:
+    return await start_profile_sync_job(payload.portal_token)
 
 
 @router.get("/api/system-jobs")
