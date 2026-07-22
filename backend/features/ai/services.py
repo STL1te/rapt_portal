@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -25,6 +26,7 @@ from features.hydrometers.services import session_dict
 AssessmentKind = Literal["brew", "fermentation"]
 _MAX_TELEMETRY_POINTS = 48
 _MAX_TOOL_ROUNDS = 4
+_MAX_LISTED_SESSIONS = 30
 _PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 FERMENTATION_SYSTEM_PROMPT = (_PROMPTS_DIR / "fermentation.md").read_text(encoding="utf-8")
@@ -40,7 +42,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_brew_sessions",
-            "description": "List summaries of all locally saved brewing sessions.",
+            "description": "Список сохранённых локально сессий варки (последние по дате, до 30).",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -48,7 +50,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_fermentation_sessions",
-            "description": "List summaries of all locally saved fermentation sessions.",
+            "description": "Список сохранённых локально сессий брожения (последние по дате, до 30).",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -56,13 +58,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_sessions",
-            "description": "Find past sessions of the same type by their name.",
+            "description": "Найти прошлые сессии того же типа по названию.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "A distinctive word or phrase from the session name.",
+                        "description": "Характерное слово или фраза из названия сессии.",
                     },
                     "kind": {"type": "string", "enum": ["brew", "fermentation"]},
                 },
@@ -75,13 +77,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_session_context",
-            "description": "Load complete local context and telemetry for one session found by search_sessions.",
+            "description": "Загрузить полный локальный контекст и телеметрию одной сессии, найденной через search_sessions.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "The ID returned by a list or search tool.",
+                        "description": "ID, возвращённый инструментом списка или поиска.",
                     },
                     "kind": {"type": "string", "enum": ["brew", "fermentation"]},
                 },
@@ -202,7 +204,9 @@ def _search_sessions(kind: AssessmentKind, query: str, current_session_id: str) 
 def _list_sessions(kind: AssessmentKind, current_session_id: str) -> list[dict]:
     model = BrewSession if kind == "brew" else HydrometerSession
     with SessionLocal() as db:
-        rows = db.scalars(select(model).order_by(model.start_date.desc()))
+        rows = db.scalars(
+            select(model).order_by(model.start_date.desc()).limit(_MAX_LISTED_SESSIONS)
+        )
         return [
             {
                 "id": session.id,
@@ -257,7 +261,12 @@ async def assess(
         *history,
         {
             "role": "user",
-            "content": f"Запрос: {prompt}\n\n<current_session_context>{context}</current_session_context>",
+            "content": (
+                f"Текущее время (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n"
+                f"Запрос: {prompt}\n\n"
+                f"<current_session_context>{context}</current_session_context>\n\n"
+                "Ответь только на русском языке."
+            ),
         },
     ]
     async with AsyncOpenAI(
