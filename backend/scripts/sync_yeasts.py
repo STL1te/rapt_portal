@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import httpx
+from sqlalchemy import select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -29,10 +30,11 @@ def sync_yeasts(portal_token: str | None = None) -> int:
     if not token:
         raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
 
-    init_db()
+    init_db(finalize_stale=False)
     headers = {"Authorization": f"Bearer {token}"}
     page = 1
     total = 0
+    seen_ids: set[str] = set()
 
     with httpx.Client(timeout=60) as client:
         while True:
@@ -56,6 +58,7 @@ def sync_yeasts(portal_token: str | None = None) -> int:
 
             with SessionLocal() as db:
                 for item in items:
+                    seen_ids.add(item["id"])
                     sync._upsert(
                         db,
                         Yeast,
@@ -81,6 +84,11 @@ def sync_yeasts(portal_token: str | None = None) -> int:
             if total >= data.get("totalCount", total):
                 break
             page += 1
+
+    with SessionLocal() as db:
+        for yeast in db.scalars(select(Yeast)):
+            yeast.archived = yeast.id not in seen_ids
+        db.commit()
 
     return total
 

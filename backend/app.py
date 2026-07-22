@@ -24,7 +24,7 @@ async def _sync_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    init_db(finalize_stale=True)
     task = asyncio.create_task(_sync_loop())
     yield
     task.cancel()

@@ -150,9 +150,10 @@ class SystemJob(Base):
     error: Mapped[str | None] = mapped_column(Text)
 
 
-def init_db() -> None:
+def init_db(*, finalize_stale: bool = True) -> None:
     from db_migrations import run_migrations
     from system_jobs import finalize_stale_jobs
 
     run_migrations()
-    finalize_stale_jobs()
+    if finalize_stale:
+        finalize_stale_jobs()
