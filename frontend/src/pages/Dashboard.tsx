@@ -32,7 +32,7 @@ export default function Dashboard() {
           {hydro.data?.map((h) => (
             <Link key={h.id} to={`/hydrometers/${h.id}`} className="card">
               <div className="card-head">
-                <span className="name">
+                <span className="name" title={h.name ?? h.id}>
                   <i className="fa-solid fa-flask" /> {h.name ?? h.id}
                 </span>
                 <span className={h.active_session_id ? 'badge active' : 'badge'}>
@@ -79,7 +79,7 @@ export default function Dashboard() {
             brew.data.map((b) => (
               <Link key={b.id} to={`/brewzillas/${b.id}`} className="card">
                 <div className="card-head">
-                  <span className="name">
+                  <span className="name" title={b.name ?? b.id}>
                     <i className="fa-solid fa-fire-burner" /> {b.name ?? b.id}
                   </span>
                   <span className={b.active_session_id ? 'badge active' : 'badge'}>
