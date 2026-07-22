@@ -69,6 +69,8 @@ export default function HydrometerSessionPage() {
   const latestGravity = s.current_gravity
   const latestTemp = latest?.temperature ?? null
   const latestTime = latest?.timestamp ? parseUtc(latest.timestamp) : null
+  const latestTelemetryLabel =
+    latestTime == null ? 'нет данных' : new Date(latestTime).toLocaleString()
   const point24h =
     latestTime == null
       ? null
@@ -259,6 +261,7 @@ export default function HydrometerSessionPage() {
         <MetricCard
           label="Длительность"
           value={duration(s.start_date, s.end_date)}
+          sub={`последняя телеметрия ${latestTelemetryLabel}`}
           icon="fa-solid fa-clock"
         />
       </section>
