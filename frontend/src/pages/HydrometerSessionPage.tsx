@@ -71,6 +71,8 @@ export default function HydrometerSessionPage() {
   const latestTime = latest?.timestamp ? parseUtc(latest.timestamp) : null
   const latestTelemetryLabel =
     latestTime == null ? 'нет данных' : new Date(latestTime).toLocaleString()
+  const startTelemetryLabel =
+    s.start_date == null ? 'нет данных' : new Date(parseUtc(s.start_date)).toLocaleString()
   const point24h =
     latestTime == null
       ? null
@@ -83,6 +85,7 @@ export default function HydrometerSessionPage() {
           ) ?? null)
   const gravityDrop24h =
     latestGravity != null && point24h?.gravity != null ? point24h.gravity - latestGravity : null
+  const gravityDrop24hLabel = gravityDrop24h == null ? null : grav(gravityDrop24h)
   const referenceFg = s.target_final_gravity ?? s.final_gravity
   const gravityToFg =
     latestGravity != null && referenceFg != null ? latestGravity - referenceFg : null
@@ -191,6 +194,10 @@ export default function HydrometerSessionPage() {
           <div className="hero-meta">
             <span>OG {grav(s.original_gravity)}</span>
             <span>Текущая {grav(latestGravity)}</span>
+            <span>
+              24ч {gravityDrop24hLabel == null ? '—' : `-${gravityDrop24hLabel}`}
+              {point24h?.gravity != null ? ` · было ${grav(point24h.gravity)}` : ''}
+            </span>
           </div>
         </article>
 
@@ -222,16 +229,16 @@ export default function HydrometerSessionPage() {
 
       <section className="stats stats-compact">
         <MetricCard
+          label="Начальная плотность"
+          value={grav(s.original_gravity)}
+          sub={density(s.original_gravity)}
+          icon="fa-solid fa-vial-circle-check"
+        />
+        <MetricCard
           label="Текущая плотность"
           value={grav(latestGravity)}
           sub={density(latestGravity)}
           icon="fa-solid fa-droplet"
-        />
-        <MetricCard
-          label="Изменение за 24ч"
-          value={gravityDrop24h == null ? '—' : grav(gravityDrop24h)}
-          sub={point24h ? `было ${grav(point24h.gravity)}` : 'недостаточно данных'}
-          icon="fa-solid fa-chart-line"
         />
         <MetricCard
           label="Температура"
@@ -261,7 +268,7 @@ export default function HydrometerSessionPage() {
         <MetricCard
           label="Длительность"
           value={duration(s.start_date, s.end_date)}
-          sub={`последняя телеметрия ${latestTelemetryLabel}`}
+          sub={`старт ${startTelemetryLabel} · последняя телеметрия ${latestTelemetryLabel}`}
           icon="fa-solid fa-clock"
         />
       </section>
