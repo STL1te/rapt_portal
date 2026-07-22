@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   getActiveSystemJobs,
+  getSystemJobHistory,
   getSystemJob,
   triggerPortalDataSync,
   triggerSync,
   triggerYeastSync,
   type SystemJob,
+  type SystemJobHistoryPage,
 } from '../api'
 import { useTitle } from '../useTitle'
 
@@ -60,12 +62,32 @@ function isActive(job: SystemJob | null | undefined): boolean {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'))
 }
 
+function formatStamp(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : '—'
+}
+
+function describeKind(kind: string): string {
+  if (kind === 'base_sync') return 'Обычный sync'
+  if (kind === 'portal_sync') return 'Portal data sync'
+  if (kind === 'yeast_sync') return 'Sync yeasts'
+  return kind
+}
+
+function statusBadgeClass(status: SystemJob['status']): string {
+  if (status === 'done') return 'badge sync-job-badge sync-job-badge-done'
+  if (status === 'failed') return 'badge sync-job-badge sync-job-badge-failed'
+  if (status === 'running') return 'badge active sync-job-badge'
+  return 'badge sync-job-badge'
+}
+
 export default function SystemSyncs() {
   useTitle('Системные синки')
   const queryClient = useQueryClient()
   const [portalToken, setPortalToken] = useState('')
   const [forcePortalSync, setForcePortalSync] = useState(false)
   const [jobsByKind, setJobsByKind] = useState<Partial<Record<JobKind, SystemJob>>>({})
+  const [historyPage, setHistoryPage] = useState(1)
+  const [history, setHistory] = useState<SystemJobHistoryPage | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -97,6 +119,24 @@ export default function SystemSyncs() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadHistory() {
+      try {
+        const next = await getSystemJobHistory(historyPage, 20)
+        if (!cancelled) setHistory(next)
+      } catch {
+        if (!cancelled) setHistory(null)
+      }
+    }
+
+    void loadHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [historyPage])
 
   useEffect(() => {
     const activeJobs = Object.values(jobsByKind).filter(isActive)
@@ -132,11 +172,13 @@ export default function SystemSyncs() {
         await queryClient.invalidateQueries({ queryKey: ['hydrometers'] })
         await queryClient.invalidateQueries({ queryKey: ['brewzillas'] })
         await queryClient.invalidateQueries({ queryKey: ['yeasts'] })
+        const next = await getSystemJobHistory(historyPage, 20)
+        setHistory(next)
       }
     }, 1500)
 
     return () => window.clearTimeout(timer)
-  }, [jobsByKind, queryClient])
+  }, [historyPage, jobsByKind, queryClient])
 
   async function startJob(kind: JobKind, runner: () => Promise<SystemJob>) {
     const job = await runner()
@@ -150,6 +192,7 @@ export default function SystemSyncs() {
   const baseState = useMemo(() => describeJob(baseJob), [baseJob])
   const portalState = useMemo(() => describeJob(portalJob), [portalJob])
   const yeastState = useMemo(() => describeJob(yeastJob), [yeastJob])
+  const totalPages = history ? Math.max(1, Math.ceil(history.total / history.page_size)) : 1
 
   return (
     <>
@@ -215,6 +258,66 @@ export default function SystemSyncs() {
           onRun={() => startJob('yeast_sync', () => triggerYeastSync(portalToken))}
         />
       </div>
+
+      <section className="panel system-jobs-history">
+        <h3 className="panel-title">История sync jobs</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Тип</th>
+              <th>Статус</th>
+              <th>Создана</th>
+              <th>Завершена</th>
+              <th>Результат</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history?.items.length ? (
+              history.items.map((job) => (
+                <tr key={job.id}>
+                  <td>{describeKind(job.kind)}</td>
+                  <td>
+                    <span className={statusBadgeClass(job.status)}>{job.status}</span>
+                  </td>
+                  <td>{formatStamp(job.created_at)}</td>
+                  <td>{formatStamp(job.finished_at)}</td>
+                  <td>{job.error ?? JSON.stringify(job.result) ?? '—'}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="muted">
+                  Нет записей
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="pagination">
+          <div className="muted">
+            {history
+              ? `${(history.page - 1) * history.page_size + 1}–${Math.min(history.page * history.page_size, history.total)} из ${history.total}`
+              : '—'}
+          </div>
+          <div className="pagination-actions">
+            <button
+              type="button"
+              disabled={historyPage <= 1}
+              onClick={() => setHistoryPage((page) => page - 1)}
+            >
+              Назад
+            </button>
+            <button
+              type="button"
+              disabled={historyPage >= totalPages}
+              onClick={() => setHistoryPage((page) => page + 1)}
+            >
+              Вперёд
+            </button>
+          </div>
+        </div>
+      </section>
     </>
   )
 }

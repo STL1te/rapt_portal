@@ -24,7 +24,6 @@ _run_locks = {
     "portal_sync": asyncio.Lock(),
     "yeast_sync": asyncio.Lock(),
 }
-_recent_terminal: dict[str, dict[str, Any]] = {}
 
 
 def _utcnow() -> datetime:
@@ -49,9 +48,6 @@ def _snapshot(job: SystemJob) -> dict[str, Any]:
 
 
 def get_job(job_id: str) -> dict[str, Any] | None:
-    cached = _recent_terminal.get(job_id)
-    if cached:
-        return cached
     with SessionLocal() as db:
         job = db.get(SystemJob, job_id)
         return _snapshot(job) if job else None
@@ -66,6 +62,42 @@ def list_active_jobs() -> list[dict[str, Any]]:
             .all()
         )
         return [_snapshot(job) for job in jobs]
+
+
+def list_job_history(page: int, page_size: int) -> dict[str, Any]:
+    offset = (page - 1) * page_size
+    with SessionLocal() as db:
+        total = db.query(SystemJob).count()
+        jobs = (
+            db.query(SystemJob)
+            .order_by(SystemJob.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        return {
+            "items": [_snapshot(job) for job in jobs],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        }
+
+
+def finalize_stale_jobs() -> int:
+    with SessionLocal() as db:
+        jobs = db.query(SystemJob).filter(SystemJob.status.in_(ACTIVE_STATUSES)).all()
+        if not jobs:
+            return 0
+
+        finished_at = _utcnow()
+        for job in jobs:
+            job.status = "failed"
+            job.finished_at = finished_at
+            job.error = "Interrupted by application restart"
+            if job.started_at is None:
+                job.started_at = finished_at
+        db.commit()
+        return len(jobs)
 
 
 async def ensure_interval_base_sync() -> None:
@@ -164,8 +196,3 @@ async def _run_job(
         job.result_json = json.dumps(result, ensure_ascii=False) if result is not None else None
         job.error = error
         db.commit()
-        snapshot = _snapshot(job)
-        db.delete(job)
-        db.commit()
-
-    _recent_terminal[job_id] = snapshot

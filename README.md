@@ -1,8 +1,8 @@
 # RAPT Portal
 
 Local dashboard for RAPT devices. The backend logs in to the public RAPT API,
-stores device state and active-session telemetry in SQLite, and exposes a small
-read API for the React frontend.
+stores device state and active-session telemetry in PostgreSQL, and exposes a
+small read API for the React frontend.
 
 The app currently supports:
 
@@ -12,13 +12,12 @@ The app currently supports:
   charts.
 - Docker Compose deployment with nginx serving the SPA and proxying `/api` to
   FastAPI.
+- Alembic migrations for schema management.
 
 ## Architecture
 
-- `backend/` - FastAPI, SQLAlchemy, SQLite cache, async RAPT API client.
+- `backend/` - FastAPI, SQLAlchemy, Alembic, PostgreSQL, async RAPT API client.
 - `frontend/` - Vite, React, TypeScript, React Router, TanStack Query, Recharts.
-- `data/` - local SQLite database directory. In Docker this is bind-mounted to
-  `/data`.
 - `docker-compose.yml` - builds and runs backend plus nginx frontend.
 
 The backend starts a background sync loop on application startup. By default it
@@ -66,6 +65,7 @@ Edit `backend/.env` and fill:
 ```env
 RAPT_USERNAME=you@example.com
 RAPT_SECRET=your-api-secret-here
+DATABASE_URL=postgresql://user:password@db-host/rapt_portal
 ```
 
 Start the stack:
@@ -101,12 +101,13 @@ uv sync
 uv run uvicorn app:app --reload
 ```
 
-The backend runs at `http://localhost:8000`. SQLite defaults to
-`../data/rapt.db` when running from `backend/`.
+The backend runs at `http://localhost:8000`. On startup it applies Alembic
+migrations to `DATABASE_URL`.
 
 Useful commands:
 
 ```bash
+uv run alembic upgrade head
 uv run python rapt_client.py
 uv run python scripts/test_gravities.py
 uv run python -m scripts.portal_data_sync
@@ -184,12 +185,12 @@ Root `.env`:
 
 - `RAPT_USERNAME` - RAPT account email.
 - `RAPT_SECRET` - RAPT API secret/password used for token exchange.
-- `DATABASE_URL` - SQLAlchemy database URL. Default: `sqlite:///../data/rapt.db`.
+- `DATABASE_URL` - SQLAlchemy database URL. Example: `postgresql://user:password@localhost/rapt_portal`.
 - `SYNC_INTERVAL_SECONDS` - background sync interval. Default: `60`.
 
 ## Data Notes
 
-- SQLite tables are created automatically on backend startup.
+- Alembic migrations are applied automatically on backend startup.
 - Telemetry rows are deduplicated by `(session_id, timestamp)`.
 - Timestamps are normalized to naive UTC before storage.
 - Hydrometer OG/FG are estimated from telemetry because the upstream API does

@@ -12,7 +12,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
-    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -152,9 +151,8 @@ class SystemJob(Base):
 
 
 def init_db() -> None:
-    Base.metadata.create_all(engine)
-    with engine.begin() as conn:
-        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(hydrometer_sessions)"))}
-        if "yeast_id" not in cols:
-            conn.execute(text("ALTER TABLE hydrometer_sessions ADD COLUMN yeast_id VARCHAR"))
-        conn.execute(text("DELETE FROM system_jobs"))
+    from db_migrations import run_migrations
+    from system_jobs import finalize_stale_jobs
+
+    run_migrations()
+    finalize_stale_jobs()

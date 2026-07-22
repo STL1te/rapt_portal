@@ -1,11 +1,12 @@
 """Health check and manual sync trigger."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from system_jobs import (
     get_job,
     list_active_jobs,
+    list_job_history,
     start_base_sync_job,
     start_portal_sync_job,
     start_yeast_sync_job,
@@ -42,14 +43,22 @@ async def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
     return await start_yeast_sync_job(payload.portal_token)
 
 
+@router.get("/api/system-jobs")
+def system_jobs() -> list[dict]:
+    return list_active_jobs()
+
+
+@router.get("/api/system-jobs/history")
+def system_job_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict:
+    return list_job_history(page, page_size)
+
+
 @router.get("/api/system-jobs/{job_id}")
 def system_job(job_id: str) -> dict:
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     return job
-
-
-@router.get("/api/system-jobs")
-def system_jobs() -> list[dict]:
-    return list_active_jobs()

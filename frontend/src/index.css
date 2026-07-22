@@ -321,6 +321,25 @@ h2:first-child {
   margin-left: 8px;
 }
 
+.sync-job-badge {
+  margin-left: 0;
+}
+
+.badge.sync-job-badge,
+.badge.sync-job-badge.active {
+  margin-left: 0;
+}
+
+.sync-job-badge-done {
+  background: rgba(53, 194, 138, 0.16);
+  color: #35c28a;
+}
+
+.sync-job-badge-failed {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ff6b6b;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -618,6 +637,10 @@ th {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
+}
+
+.system-jobs-history {
+  margin-top: 20px;
 }
 
 .sync-card {

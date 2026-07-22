@@ -67,6 +67,13 @@ export type SystemJob = {
   error: string | null
 }
 
+export type SystemJobHistoryPage = {
+  items: SystemJob[]
+  page: number
+  page_size: number
+  total: number
+}
+
 export type BrewZilla = {
   id: string
   name: string | null
@@ -185,4 +192,6 @@ export const triggerPortalDataSync = (portalToken: string, force = false) =>
 export const triggerYeastSync = (portalToken: string) =>
   post<SystemJob>('/api/sync_yeasts', { portal_token: portalToken })
 export const getActiveSystemJobs = () => get<SystemJob[]>('/api/system-jobs')
+export const getSystemJobHistory = (page = 1, pageSize = 20) =>
+  get<SystemJobHistoryPage>(`/api/system-jobs/history?page=${page}&page_size=${pageSize}`)
 export const getSystemJob = (jobId: string) => get<SystemJob>(`/api/system-jobs/${jobId}`)
