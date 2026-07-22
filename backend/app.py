@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import SYNC_INTERVAL_SECONDS
 from db import init_db
-from routers import brewzillas, hydrometers, system, yeasts
+from routers import ai, brewzillas, hydrometers, system, yeasts
 from system_jobs import ensure_interval_base_sync
 
 
@@ -44,3 +44,4 @@ app.include_router(system.router)
 app.include_router(hydrometers.router)
 app.include_router(brewzillas.router)
 app.include_router(yeasts.router)
+app.include_router(ai.router)

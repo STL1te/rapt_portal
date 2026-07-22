@@ -1,0 +1,295 @@
+"""OpenAI-compatible LLM prompts and local-session context builders."""
+
+import json
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Literal
+
+from openai import AsyncOpenAI
+from sqlalchemy import func, select
+
+from config import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_EXTRA_BODY_JSON,
+    LLM_KEEP_ALIVE,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    LLM_TIMEOUT_SECONDS,
+    LLM_TOP_P,
+)
+from db import BrewSession, BrewTelemetry, HydrometerSession, HydrometerTelemetry, SessionLocal
+from serializers import brew_session_dict, session_dict
+
+AssessmentKind = Literal["brew", "fermentation"]
+_MAX_TELEMETRY_POINTS = 48
+_MAX_TOOL_ROUNDS = 4
+_PROMPTS_DIR = Path(__file__).with_name("prompts")
+
+FERMENTATION_SYSTEM_PROMPT = (_PROMPTS_DIR / "fermentation.md").read_text(encoding="utf-8")
+BREW_SYSTEM_PROMPT = (_PROMPTS_DIR / "brew.md").read_text(encoding="utf-8")
+
+DEFAULT_QUESTIONS: dict[AssessmentKind, str] = {
+    "fermentation": "Оцени текущее состояние брожения и назови следующие разумные действия.",
+    "brew": "Оцени ход варки относительно профиля и назови следующие разумные действия.",
+}
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_brew_sessions",
+            "description": "List summaries of all locally saved brewing sessions.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_fermentation_sessions",
+            "description": "List summaries of all locally saved fermentation sessions.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_sessions",
+            "description": "Find past sessions of the same type by their name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "A distinctive word or phrase from the session name.",
+                    },
+                    "kind": {"type": "string", "enum": ["brew", "fermentation"]},
+                },
+                "required": ["query", "kind"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_session_context",
+            "description": "Load complete local context and telemetry for one session found by search_sessions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "The ID returned by a list or search tool.",
+                    },
+                    "kind": {"type": "string", "enum": ["brew", "fermentation"]},
+                },
+                "required": ["session_id", "kind"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
+
+def _sample(
+    rows: Sequence, fields: tuple[str, ...], count: int = _MAX_TELEMETRY_POINTS
+) -> list[dict]:
+    selected = (
+        rows
+        if len(rows) <= count
+        else [
+            rows[i]
+            for i in sorted({round(i * (len(rows) - 1) / (count - 1)) for i in range(count)})
+        ]
+    )
+    return [{field: getattr(item, field) for field in fields} for item in selected]
+
+
+def _fermentation_context(db, session_id: str) -> dict | None:
+    session = db.get(HydrometerSession, session_id)
+    if not session:
+        return None
+    telemetry = list(
+        db.scalars(
+            select(HydrometerTelemetry)
+            .where(HydrometerTelemetry.session_id == session_id)
+            .order_by(HydrometerTelemetry.timestamp)
+        )
+    )
+    return {
+        "session": session_dict(session, db),
+        "telemetry": _sample(
+            telemetry,
+            ("timestamp", "gravity", "gravity_velocity", "temperature"),
+        ),
+    }
+
+
+def _brew_context(db, session_id: str) -> dict | None:
+    session = db.get(BrewSession, session_id)
+    if not session:
+        return None
+    telemetry = list(
+        db.scalars(
+            select(BrewTelemetry)
+            .where(BrewTelemetry.session_id == session_id)
+            .order_by(BrewTelemetry.timestamp)
+        )
+    )
+    return {
+        "session": brew_session_dict(session),
+        "telemetry": _sample(
+            telemetry,
+            (
+                "timestamp",
+                "temperature",
+                "target_temperature",
+                "min_target_temperature",
+                "max_target_temperature",
+                "control_device_temperature",
+                "heating_run_time",
+                "heating_starts",
+                "auxillary_run_time",
+                "auxillary_starts",
+                "profile_step_id",
+                "profile_step_progress",
+                "profile_session_time",
+            ),
+        ),
+    }
+
+
+def build_context(
+    db, kind: AssessmentKind, session_id: str, comparison_session_id: str | None
+) -> str:
+    build = _fermentation_context if kind == "fermentation" else _brew_context
+    current = build(db, session_id)
+    if current is None:
+        raise LookupError("session not found")
+
+    context: dict[str, object] = {"current_session": current}
+    if comparison_session_id:
+        comparison = build(db, comparison_session_id)
+        if comparison is None:
+            raise LookupError("comparison session not found")
+        context["comparison_session"] = comparison
+    return json.dumps(context, ensure_ascii=False, default=str, separators=(",", ":"))
+
+
+def _search_sessions(kind: AssessmentKind, query: str, current_session_id: str) -> list[dict]:
+    model = BrewSession if kind == "brew" else HydrometerSession
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(model)
+            .where(func.lower(model.name).contains(query.lower()))
+            .order_by(model.start_date.desc())
+            .limit(10)
+        )
+        return [
+            {
+                "id": session.id,
+                "name": session.name,
+                "start_date": session.start_date,
+                "end_date": session.end_date,
+                "is_current": session.id == current_session_id,
+            }
+            for session in rows
+        ]
+
+
+def _list_sessions(kind: AssessmentKind, current_session_id: str) -> list[dict]:
+    model = BrewSession if kind == "brew" else HydrometerSession
+    with SessionLocal() as db:
+        rows = db.scalars(select(model).order_by(model.start_date.desc()))
+        return [
+            {
+                "id": session.id,
+                "name": session.name,
+                "start_date": session.start_date,
+                "end_date": session.end_date,
+                "active": session.active,
+                "is_current": session.id == current_session_id,
+            }
+            for session in rows
+        ]
+
+
+def _run_tool(current_session_id: str, name: str, arguments: dict) -> dict:
+    if name == "list_brew_sessions":
+        return {"sessions": _list_sessions("brew", current_session_id)}
+    if name == "list_fermentation_sessions":
+        return {"sessions": _list_sessions("fermentation", current_session_id)}
+    if name == "search_sessions":
+        query = str(arguments.get("query", "")).strip()
+        kind = arguments.get("kind")
+        if kind not in ("brew", "fermentation"):
+            return {"error": "kind must be brew or fermentation"}
+        if len(query) < 2:
+            return {"error": "query must contain at least two characters"}
+        return {"sessions": _search_sessions(kind, query, current_session_id)}
+    if name == "get_session_context":
+        session_id = str(arguments.get("session_id", ""))
+        kind = arguments.get("kind")
+        if kind not in ("brew", "fermentation"):
+            return {"error": "kind must be brew or fermentation"}
+        with SessionLocal() as db:
+            context = build_context(db, kind, session_id, None)
+        return json.loads(context)
+    return {"error": "unknown tool"}
+
+
+async def assess(
+    kind: AssessmentKind,
+    session_id: str,
+    context: str,
+    question: str | None,
+    history: Sequence[dict[str, str]] = (),
+) -> str:
+    prompt = question or DEFAULT_QUESTIONS[kind]
+    system_prompt = FERMENTATION_SYSTEM_PROMPT if kind == "fermentation" else BREW_SYSTEM_PROMPT
+    extra_body = json.loads(LLM_EXTRA_BODY_JSON) if LLM_EXTRA_BODY_JSON else {}
+    if LLM_KEEP_ALIVE:
+        extra_body["keep_alive"] = LLM_KEEP_ALIVE
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        *history,
+        {
+            "role": "user",
+            "content": f"Запрос: {prompt}\n\n<current_session_context>{context}</current_session_context>",
+        },
+    ]
+    async with AsyncOpenAI(
+        base_url=LLM_BASE_URL,
+        api_key=LLM_API_KEY,
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=0,
+    ) as client:
+        for _ in range(_MAX_TOOL_ROUNDS):
+            response = await client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=LLM_TEMPERATURE,
+                top_p=LLM_TOP_P,
+                extra_body=extra_body or None,
+            )
+            message = response.choices[0].message
+            if not message.tool_calls:
+                return message.content or "Модель не вернула ответ."
+            messages.append(message.model_dump(exclude_none=True))
+            for tool_call in message.tool_calls:
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                    result = _run_tool(session_id, tool_call.function.name, arguments)
+                except (json.JSONDecodeError, LookupError) as error:
+                    result = {"error": str(error)}
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    }
+                )
+    return "Не удалось завершить поиск контекста для ответа."

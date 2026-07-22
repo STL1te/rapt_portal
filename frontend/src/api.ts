@@ -169,6 +169,24 @@ export type SyncResult = {
   count?: number
 }
 
+export type AiChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type AiAssessmentRequest = {
+  kind: 'brew' | 'fermentation'
+  session_id: string
+  question: string | null
+  history: AiChatMessage[]
+}
+
+export type AiAssessment = {
+  answer: string
+  model: string
+  question: string
+}
+
 export const getHydrometers = () => get<Hydrometer[]>('/api/hydrometers')
 export const getHydrometerSessions = (hydrometerId: string) =>
   get<Session[]>(`/api/hydrometers/${hydrometerId}/sessions`)
@@ -195,3 +213,5 @@ export const getActiveSystemJobs = () => get<SystemJob[]>('/api/system-jobs')
 export const getSystemJobHistory = (page = 1, pageSize = 20) =>
   get<SystemJobHistoryPage>(`/api/system-jobs/history?page=${page}&page_size=${pageSize}`)
 export const getSystemJob = (jobId: string) => get<SystemJob>(`/api/system-jobs/${jobId}`)
+export const assessSession = (request: AiAssessmentRequest) =>
+  post<AiAssessment>('/api/ai/assessments', request)

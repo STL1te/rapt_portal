@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getBrewSession } from '../api'
+import AiAssistant from '../components/AiAssistant'
 import BrewChart from '../components/BrewChart'
 import { temp, date, durationHm, stepLen, pct } from '../fmt'
 import { useTitle } from '../useTitle'
@@ -38,6 +40,7 @@ function fmtDelta(value: number | null) {
 export default function BrewSessionPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const {
     data: s,
@@ -129,6 +132,17 @@ export default function BrewSessionPage() {
           {date(s.start_date)} — {s.active ? 'сейчас' : date(s.end_date)}
         </span>
       </div>
+
+      <button type="button" className="assistant-button" onClick={() => setAssistantOpen(true)}>
+        <i className="fa-solid fa-wand-magic-sparkles" /> AI-ассистент
+      </button>
+      <AiAssistant
+        key={s.id}
+        kind="brew"
+        sessionId={s.id}
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+      />
 
       <section className="session-hero">
         <article className={`hero-card hero-status ${status.tone}`}>

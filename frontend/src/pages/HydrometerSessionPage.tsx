@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getHydrometerSession, getHydrometerTelemetry } from '../api'
+import AiAssistant from '../components/AiAssistant'
 import HydrometerChart from '../components/HydrometerChart'
 import { brix, date, duration, grav, sg } from '../fmt'
 import { useTitle } from '../useTitle'
@@ -36,6 +38,7 @@ function MetricCard({
 export default function HydrometerSessionPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const {
     data: s,
@@ -183,6 +186,17 @@ export default function HydrometerSessionPage() {
           {date(s.start_date)} — {s.active ? 'сейчас' : date(s.end_date)}
         </span>
       </div>
+
+      <button type="button" className="assistant-button" onClick={() => setAssistantOpen(true)}>
+        <i className="fa-solid fa-wand-magic-sparkles" /> AI-ассистент
+      </button>
+      <AiAssistant
+        key={s.id}
+        kind="fermentation"
+        sessionId={s.id}
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+      />
 
       <section className="session-hero">
         <article className={`hero-card hero-status ${status.tone}`}>
