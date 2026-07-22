@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ai import DEFAULT_QUESTIONS, TOOLS, _sample, assess
+from features.ai.services import DEFAULT_QUESTIONS, TOOLS, _sample, assess
 
 
 class _Client:
@@ -75,7 +75,7 @@ async def main() -> None:
     assert telemetry == [{"timestamp": "2026-07-22", "gravity": 1012.0, "temperature": 20.0}]
 
     client = _Client()
-    with patch("ai.AsyncOpenAI", return_value=client):
+    with patch("features.ai.services.AsyncOpenAI", return_value=client):
         answer = await assess(
             "brew",
             "11111111-1111-1111-1111-111111111111",
@@ -101,8 +101,8 @@ async def main() -> None:
 
     tool_client = _ToolClient()
     with (
-        patch("ai.AsyncOpenAI", return_value=tool_client),
-        patch("ai._run_tool", return_value={"sessions": []}) as run_tool,
+        patch("features.ai.services.AsyncOpenAI", return_value=tool_client),
+        patch("features.ai.services._run_tool", return_value={"sessions": []}) as run_tool,
     ):
         answer = await assess("brew", "current", "{}", "Compare with tropicana")
     assert answer == "Compared."

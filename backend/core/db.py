@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from config import DATABASE_URL
+from core.config import DATABASE_URL
 
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
@@ -151,8 +151,8 @@ class SystemJob(Base):
 
 
 def init_db(*, finalize_stale: bool = True) -> None:
-    from db_migrations import run_migrations
-    from system_jobs import finalize_stale_jobs
+    from core.db_migrations import run_migrations
+    from features.system.services import finalize_stale_jobs
 
     run_migrations()
     if finalize_stale:

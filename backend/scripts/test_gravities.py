@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sync import _fg, _og
+from core.sync import _fg, _og
 
 
 def test_normal_ferment():

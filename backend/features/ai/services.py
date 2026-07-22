@@ -8,7 +8,7 @@ from typing import Literal
 from openai import AsyncOpenAI
 from sqlalchemy import func, select
 
-from config import (
+from core.config import (
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_EXTRA_BODY_JSON,
@@ -18,13 +18,14 @@ from config import (
     LLM_TIMEOUT_SECONDS,
     LLM_TOP_P,
 )
-from db import BrewSession, BrewTelemetry, HydrometerSession, HydrometerTelemetry, SessionLocal
-from serializers import brew_session_dict, session_dict
+from core.db import BrewSession, BrewTelemetry, HydrometerSession, HydrometerTelemetry, SessionLocal
+from features.brewzillas.services import brew_session_dict
+from features.hydrometers.services import session_dict
 
 AssessmentKind = Literal["brew", "fermentation"]
 _MAX_TELEMETRY_POINTS = 48
 _MAX_TOOL_ROUNDS = 4
-_PROMPTS_DIR = Path(__file__).with_name("prompts")
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 FERMENTATION_SYSTEM_PROMPT = (_PROMPTS_DIR / "fermentation.md").read_text(encoding="utf-8")
 BREW_SYSTEM_PROMPT = (_PROMPTS_DIR / "brew.md").read_text(encoding="utf-8")

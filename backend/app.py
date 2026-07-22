@@ -7,10 +7,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import SYNC_INTERVAL_SECONDS
-from db import init_db
-from routers import ai, brewzillas, hydrometers, system, yeasts
-from system_jobs import ensure_interval_base_sync
+from core.config import SYNC_INTERVAL_SECONDS
+from core.db import init_db
+from features.ai.router import router as ai_router
+from features.brewzillas.router import router as brewzillas_router
+from features.hydrometers.router import router as hydrometers_router
+from features.system.router import router as system_router
+from features.system.services import ensure_interval_base_sync
+from features.yeasts.router import router as yeasts_router
 
 
 async def _sync_loop() -> None:
@@ -40,8 +44,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(system.router)
-app.include_router(hydrometers.router)
-app.include_router(brewzillas.router)
-app.include_router(yeasts.router)
-app.include_router(ai.router)
+app.include_router(system_router)
+app.include_router(hydrometers_router)
+app.include_router(brewzillas_router)
+app.include_router(yeasts_router)
+app.include_router(ai_router)

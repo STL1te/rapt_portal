@@ -20,17 +20,22 @@ RAPT Portal is a local dashboard for RAPT devices:
 
 - `backend/app.py` - FastAPI app, CORS, router registration, background sync
   lifespan task.
-- `backend/sync.py` - RAPT sync logic, session tracking, telemetry inserts,
-  gravity estimation.
-- `backend/rapt_client.py` - token cache and thin async client for upstream RAPT
-  endpoints.
-- `backend/db.py` - SQLAlchemy models and database initialization.
-- `backend/routers/` - local API routes.
-- `backend/serializers.py` - ORM row to API response helpers.
-- `backend/ai.py` - OpenAI-compatible LLM client, session-context builders and
-  whitelisted tool-use loop.
+- `backend/core/` - cross-cutting infrastructure shared by all features:
+  - `core/config.py` - env-driven settings.
+  - `core/db.py` - SQLAlchemy models and database initialization.
+  - `core/sync.py` - RAPT sync logic, session tracking, telemetry inserts,
+    gravity estimation.
+  - `core/rapt_client.py` - token cache and thin async client for upstream RAPT
+    endpoints.
+  - `core/serializers.py` - generic ORM row -> dict helper.
+  - `core/db_migrations.py` - alembic upgrade runner used by `init_db`.
+- `backend/features/<name>/` - one folder per feature, each with `router.py`
+  (local API routes) and, where needed, `services.py` (feature logic and
+  serialization): `hydrometers`, `brewzillas`, `yeasts`, `ai`, `system`.
+- `backend/features/ai/services.py` - OpenAI-compatible LLM client,
+  session-context builders and whitelisted tool-use loop.
+- `backend/features/system/services.py` - DB-backed background sync jobs.
 - `backend/prompts/` - UTF-8 Russian system prompts for brewing and fermentation.
-- `backend/routers/ai.py` - local AI assessment API.
 - `frontend/src/api.ts` - frontend API types and fetch helpers.
 - `frontend/src/App.tsx` - SPA route map and navigation.
 - `frontend/src/pages/` - page-level React views.
@@ -50,7 +55,7 @@ Authentication:
 - API base: `https://api.rapt.io`
 - Auth scheme: Bearer JWT
 
-Current upstream endpoints used by `backend/rapt_client.py`:
+Current upstream endpoints used by `backend/core/rapt_client.py`:
 
 - `GET /api/Hydrometers/GetHydrometers`
 - `GET /api/Hydrometers/GetTelemetry`
@@ -68,7 +73,7 @@ Backend:
 cd backend
 uv sync
 uv run uvicorn app:app --reload
-uv run python rapt_client.py
+uv run python -m core.rapt_client
 uv run python scripts/test_gravities.py
 ```
 
@@ -114,7 +119,7 @@ docker compose down
   `LLM_EXTRA_BODY_JSON` or `LLM_KEEP_ALIVE`, so cloud providers can disable
   them through configuration.
 - The LLM may only access local session data through the whitelisted tools in
-  `backend/ai.py`; never expose SQL, arbitrary URLs, filesystem access or write
+  `backend/features/ai/services.py`; never expose SQL, arbitrary URLs, filesystem access or write
   operations to the model.
 - Keep AI context focused on brewing: omit device-health fields such as battery
   and RSSI unless a feature explicitly needs them. Preserve UTF-8 Cyrillic in
@@ -163,7 +168,7 @@ For backend changes:
 - Run `uv run python scripts/test_gravities.py` if gravity/session logic changed.
 - Run or smoke-check `uv run uvicorn app:app --reload` when route wiring or app
   startup changes.
-- Use `uv run python rapt_client.py` only when credentials/network access are
+- Use `uv run python -m core.rapt_client` only when credentials/network access are
   available and the change touches upstream API behavior.
 - Run `uv run python scripts/test_ai.py` when changing AI prompts, context,
   tools or the LLM client.

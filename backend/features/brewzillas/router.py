@@ -1,39 +1,14 @@
 """BrewZilla devices, brew sessions and telemetry."""
 
-from datetime import datetime, timedelta
-
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from db import BrewSession, BrewTelemetry, BrewZilla, SessionLocal
-from serializers import brew_session_dict, row
+from core.db import BrewSession, BrewTelemetry, BrewZilla, SessionLocal
+from core.serializers import row
+
+from .services import brew_session_dict, effective_brew_end, is_short_brew_session
 
 router = APIRouter()
-_SHORT_BREW_SESSION = timedelta(hours=1)
-_BREW_GAP_CUTOFF = timedelta(hours=4)
-
-
-def _is_short_brew_session(s: BrewSession) -> bool:
-    if not s.start_date:
-        return False
-    end = s.end_date or s.start_date
-    return end - s.start_date < _SHORT_BREW_SESSION
-
-
-def _effective_brew_end(db, s: BrewSession) -> datetime | None:
-    rows = list(
-        db.scalars(
-            select(BrewTelemetry.timestamp)
-            .where(BrewTelemetry.session_id == s.id)
-            .order_by(BrewTelemetry.timestamp)
-        )
-    )
-    if not rows:
-        return s.end_date
-    for prev, cur in zip(rows, rows[1:]):
-        if cur - prev > _BREW_GAP_CUTOFF:
-            return prev
-    return rows[-1]
 
 
 @router.get("/api/brewzillas")
@@ -53,10 +28,10 @@ def list_brew_sessions(brewzilla_id: str, include_short: bool = False) -> list[d
         # list view doesn't need the full profile payload
         out = []
         for s in rows:
-            if not include_short and _is_short_brew_session(s):
+            if not include_short and is_short_brew_session(s):
                 continue
             d = {k: v for k, v in brew_session_dict(s).items() if k != "profile"}
-            d["end_date"] = _effective_brew_end(db, s) or d["end_date"]
+            d["end_date"] = effective_brew_end(db, s) or d["end_date"]
             out.append(d)
         return out
 
@@ -68,7 +43,7 @@ def get_brew_session(session_id: str) -> dict:
         if not s:
             raise HTTPException(404, "brew session not found")
         d = brew_session_dict(s)
-        d["end_date"] = _effective_brew_end(db, s) or d["end_date"]
+        d["end_date"] = effective_brew_end(db, s) or d["end_date"]
         return d
 
 
@@ -80,7 +55,7 @@ def brew_session_telemetry(
         s = db.get(BrewSession, session_id)
         if not s:
             raise HTTPException(404, "brew session not found")
-        effective_end = _effective_brew_end(db, s)
+        effective_end = effective_brew_end(db, s)
         q = select(BrewTelemetry).where(BrewTelemetry.session_id == session_id)
         if start:
             q = q.where(BrewTelemetry.timestamp >= start)

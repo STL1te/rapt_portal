@@ -3,8 +3,8 @@
 from fastapi import APIRouter
 from sqlalchemy import select
 
-from db import SessionLocal, Yeast
-from serializers import row
+from core.db import SessionLocal, Yeast
+from core.serializers import row
 
 router = APIRouter()
 

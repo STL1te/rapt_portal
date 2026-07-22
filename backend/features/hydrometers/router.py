@@ -3,8 +3,10 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from db import Hydrometer, HydrometerSession, HydrometerTelemetry, SessionLocal
-from serializers import row, session_dict
+from core.db import Hydrometer, HydrometerSession, HydrometerTelemetry, SessionLocal
+from core.serializers import row
+
+from .services import session_dict
 
 router = APIRouter()
 

@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-from config import API_BASE, RAPT_SECRET, RAPT_USERNAME, TOKEN_URL
+from core.config import API_BASE, RAPT_SECRET, RAPT_USERNAME, TOKEN_URL
 
 _token: str | None = None
 _token_expiry: float = 0.0  # unix seconds

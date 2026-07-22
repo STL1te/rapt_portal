@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
-import sync
-from db import SessionLocal, SystemJob
+from core import sync
+from core.db import SessionLocal, SystemJob
+from features.yeasts.services import sync_yeasts
 from scripts.portal_data_sync import portal_data_sync
-from scripts.sync_yeasts import sync_yeasts
 
 TERMINAL_STATUSES = {"done", "failed"}
 ACTIVE_STATUSES = {"queued", "running"}

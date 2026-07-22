@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
-from ai import DEFAULT_QUESTIONS, assess, build_context
-from config import LLM_MODEL
-from db import SessionLocal
+from core.config import LLM_MODEL
+from core.db import SessionLocal
+
+from .services import DEFAULT_QUESTIONS, assess, build_context
 
 router = APIRouter()
 

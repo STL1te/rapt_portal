@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
-from system_jobs import (
+from .services import (
     get_job,
     list_active_jobs,
     list_job_history,

@@ -1,56 +1,39 @@
-"""ORM row -> dict serializers shared by the API routers."""
+"""BrewZilla session serialization and session-boundary heuristics."""
 
 import json
-import statistics
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import object_session
 
-from db import BrewSession, BrewTelemetry, HydrometerSession, HydrometerTelemetry, Yeast
+from core.db import BrewSession, BrewTelemetry
+from core.serializers import row
 
-_GRAVITY_MIN, _GRAVITY_MAX = 980.0, 1130.0
-
-
-def row(obj) -> dict:
-    return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+_SHORT_BREW_SESSION = timedelta(hours=1)
+_BREW_GAP_CUTOFF = timedelta(hours=4)
 
 
-def _current_gravity(db, session_id: str) -> float | None:
-    readings = [
-        x
-        for x in db.scalars(
-            select(HydrometerTelemetry.gravity)
-            .where(HydrometerTelemetry.session_id == session_id)
-            .order_by(HydrometerTelemetry.timestamp)
+def is_short_brew_session(s: BrewSession) -> bool:
+    if not s.start_date:
+        return False
+    end = s.end_date or s.start_date
+    return end - s.start_date < _SHORT_BREW_SESSION
+
+
+def effective_brew_end(db, s: BrewSession) -> datetime | None:
+    rows = list(
+        db.scalars(
+            select(BrewTelemetry.timestamp)
+            .where(BrewTelemetry.session_id == s.id)
+            .order_by(BrewTelemetry.timestamp)
         )
-        if x is not None and _GRAVITY_MIN <= x <= _GRAVITY_MAX
-    ]
-    if not readings:
-        return None
-    tail = readings[-max(5, len(readings) // 20) :]
-    return round(statistics.median(tail), 2)
-
-
-def session_dict(s: HydrometerSession, db=None) -> dict:
-    """Session row plus derived ABV and apparent attenuation (OG/FG in points)."""
-    d = row(s)
-    og, fg = s.original_gravity, s.final_gravity
-    ok = og is not None and fg is not None and og >= fg
-    yeast = db.get(Yeast, s.yeast_id) if db is not None and s.yeast_id else None
-    d["current_gravity"] = _current_gravity(db, s.id) if db is not None else None
-    d["abv"] = round((og - fg) / 7.5, 2) if ok else None
-    d["attenuation"] = round((og - fg) / (og - 1000) * 100, 1) if ok and og > 1000 else None
-    d["yeast_name"] = yeast.name if yeast else None
-    d["yeast_product_id"] = yeast.product_id if yeast else None
-    d["yeast_attenuation"] = yeast.attenuation if yeast else None
-    d["yeast_min_temperature"] = yeast.min_temperature if yeast else None
-    d["yeast_max_temperature"] = yeast.max_temperature if yeast else None
-    d["target_final_gravity"] = (
-        round(og - (og - 1000) * yeast.attenuation / 100, 2)
-        if yeast and yeast.attenuation is not None and og is not None
-        else None
     )
-    return d
+    if not rows:
+        return s.end_date
+    for prev, cur in zip(rows, rows[1:]):
+        if cur - prev > _BREW_GAP_CUTOFF:
+            return prev
+    return rows[-1]
 
 
 def brew_session_dict(s: BrewSession) -> dict:
