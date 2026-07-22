@@ -9,6 +9,7 @@ import HydrometerDetail from '@/pages/HydrometerDetail'
 import Hydrometers from '@/pages/Hydrometers'
 import HydrometerSessionPage from '@/pages/HydrometerSessionPage'
 import RecipeDetail from '@/pages/RecipeDetail'
+import RecipeEditor from '@/pages/RecipeEditor'
 import Recipes from '@/pages/Recipes'
 import SystemSyncs from '@/pages/SystemSyncs'
 import YeastDetail from '@/pages/YeastDetail'
@@ -108,7 +109,9 @@ export default function App() {
           <Route path="/brewzillas/:id" element={<BrewZillaDetail />} />
           <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />
           <Route path="/recipes" element={<Recipes />} />
+          <Route path="/recipes/new" element={<RecipeEditor />} />
           <Route path="/recipes/:id" element={<RecipeDetail />} />
+          <Route path="/recipes/:id/edit" element={<RecipeEditor />} />
           <Route path="/yeasts" element={<Yeasts />} />
           <Route path="/yeasts/:id" element={<YeastDetail />} />
           <Route path="/system-syncs" element={<SystemSyncs />} />

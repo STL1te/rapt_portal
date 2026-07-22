@@ -156,6 +156,8 @@ class Profile(Base):
     steps_json: Mapped[str | None] = mapped_column(Text)  # ProfileStepModel[]
     alerts_json: Mapped[str | None] = mapped_column(Text)  # ProfileAlertModel[]
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # local edits not yet uploaded to RAPT; cleared when sync_profiles re-pulls it
+    draft: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 

@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable
 
 from core import sync
 from core.db import SessionLocal, SystemJob
-from features.profiles.services import sync_profiles
+from features.profiles.services import sync_profiles, upload_profile
 from features.yeasts.services import sync_yeasts
 from scripts.portal_data_sync import portal_data_sync
 
@@ -20,12 +20,14 @@ _start_locks = {
     "portal_sync": asyncio.Lock(),
     "yeast_sync": asyncio.Lock(),
     "profile_sync": asyncio.Lock(),
+    "profile_upload": asyncio.Lock(),
 }
 _run_locks = {
     "base_sync": asyncio.Lock(),
     "portal_sync": asyncio.Lock(),
     "yeast_sync": asyncio.Lock(),
     "profile_sync": asyncio.Lock(),
+    "profile_upload": asyncio.Lock(),
 }
 
 
@@ -139,6 +141,16 @@ async def start_profile_sync_job(portal_token: str) -> dict[str, Any]:
         return {"status": "ok", "count": count}
 
     return await _start_job("profile_sync", runner)
+
+
+async def start_profile_upload_job(profile_id: str, portal_token: str) -> dict[str, Any]:
+    async def runner() -> dict[str, Any]:
+        async with _run_locks["profile_upload"]:
+            # resync inside upload_profile also touches profiles, so hold that lock too
+            async with _run_locks["profile_sync"]:
+                return await asyncio.to_thread(upload_profile, profile_id, portal_token)
+
+    return await _start_job("profile_upload", runner)
 
 
 async def run_base_sync() -> dict[str, Any]:

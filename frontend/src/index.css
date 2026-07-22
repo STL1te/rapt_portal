@@ -186,6 +186,9 @@ h2:first-child {
 .error {
   color: #ff6b6b;
 }
+.success {
+  color: #35c28a;
+}
 .muted {
   color: var(--muted);
 }
@@ -667,7 +670,6 @@ h2:first-child {
 .badge.active {
   background: var(--accent-bg);
   color: var(--accent);
-  margin-left: 8px;
 }
 
 .sync-job-badge {
@@ -1385,4 +1387,245 @@ th {
     background: var(--accent-bg);
     border-color: rgba(78, 161, 255, 0.35);
   }
+}
+
+/* --- recipe editor (Phase 2) --- */
+.page-head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.draft-badge {
+  margin-left: 8px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.recipe-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.recipe-token {
+  max-width: 640px;
+  margin-bottom: 16px;
+}
+
+.page-head-actions button,
+.recipe-actions button,
+.pagination-actions button,
+.steps-head button,
+.step-editor-head button,
+.alerts-editor .link-btn,
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-head-actions button:hover:not(:disabled),
+.recipe-actions button:hover:not(:disabled),
+.pagination-actions button:hover:not(:disabled),
+.step-editor-head button:hover:not(:disabled),
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.recipe-actions button:disabled,
+.pagination-actions button:disabled,
+.step-editor-head button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  background: var(--accent-bg) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.icon-btn {
+  padding: 6px 9px;
+  color: var(--muted);
+}
+
+.link-btn {
+  border: none !important;
+  background: none !important;
+  color: var(--accent) !important;
+  padding: 4px 0 !important;
+  cursor: pointer;
+}
+
+.field-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* checkbox sits inside a .field so its header aligns with sibling field labels */
+.field-row .field .sync-checkbox {
+  padding: 9px 0;
+}
+
+.steps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.steps-head .panel-title {
+  margin: 0;
+}
+
+.step-editor {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  transition:
+    box-shadow 0.12s ease,
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.step-editor.dragging {
+  opacity: 0.4;
+  transform: scale(0.99);
+}
+/* drop indicator: accent bar on the edge the step will land against */
+.step-editor.drop-before {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+.step-editor.drop-after {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.step-editor-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.handle {
+  cursor: grab;
+  color: var(--muted);
+  padding: 4px 2px;
+}
+
+.step-num {
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 1.4em;
+}
+
+.step-name {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font: inherit;
+}
+
+/* per-field widths => fields wrap into 2–5 rows (RAPT-style) and stack on mobile */
+.step-editor-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: end;
+}
+.step-editor-fields .field {
+  flex: 1 1 200px;
+}
+.step-editor-fields .field-wide {
+  flex: 3 1 340px;
+}
+.step-editor-fields .field-256 {
+  flex: 1 1 256px;
+  min-width: 256px;
+}
+.step-editor-fields .field-narrow {
+  flex: 0 1 150px;
+}
+
+.adv-toggle {
+  margin: 14px 0;
+}
+
+/* spacing between fields in the recipe info form */
+.recipe-form .field,
+.recipe-form .field-row {
+  margin-bottom: 14px;
+}
+.recipe-form .field:last-child,
+.recipe-form .field-row:last-child {
+  margin-bottom: 0;
+}
+
+.step-alerts-editor {
+  margin-top: 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.alerts-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.alert-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.alert-row select,
+.alert-row input {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  width: 100%;
+}
+
+.alert-del {
+  align-self: flex-start;
+  color: var(--muted);
+}
+
+.time-input {
+  display: flex;
+  gap: 8px;
+}
+.time-input input {
+  flex: 1;
+}
+.time-input select {
+  width: auto;
+  min-width: 80px;
+  flex: 0 0 auto;
 }

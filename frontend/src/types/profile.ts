@@ -77,10 +77,24 @@ export type ProfileListItem = {
   profile_type_name: string | null
   step_count: number
   archived: boolean
+  draft: boolean
   updated_at: string | null
 }
 
 export type Profile = ProfileListItem & {
+  steps: ProfileStep[]
+  alerts: ProfileAlert[]
+}
+
+export type ProfileType = { id: string; name: string | null }
+
+// editor payload for create/update (backend ProfileIn)
+export type ProfileInput = {
+  name: string
+  description: string | null
+  public: boolean
+  profile_type_id: string | null
+  profile_type_name: string | null
   steps: ProfileStep[]
   alerts: ProfileAlert[]
 }

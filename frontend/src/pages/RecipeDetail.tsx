@@ -1,10 +1,19 @@
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
-import { getProfile } from '@/api'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { deleteProfile, getProfile, getSystemJob, uploadProfile } from '@/api'
 import MetricCard from '@/components/MetricCard'
-import type { ControlType, EndType, ProfileStep } from '@/types'
+import type { ControlType, EndType, ProfileStep, SystemJob } from '@/types'
 import { stepLen, temp } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
+
+async function pollJob(jobId: string): Promise<SystemJob> {
+  for (;;) {
+    const job = await getSystemJob(jobId)
+    if (job.status === 'done' || job.status === 'failed') return job
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+}
 
 // FontAwesome icons mirroring RAPT's step editor (see docs/recipes-epic.md)
 const CONTROL_ICON: Partial<Record<ControlType, string>> = {
@@ -42,12 +51,62 @@ function boilStep(steps: ProfileStep[]): ProfileStep | null {
 export default function RecipeDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['profile', id],
     queryFn: () => getProfile(id as string),
     enabled: Boolean(id),
   })
   useTitle(data?.name ?? 'Рецепт')
+
+  const location = useLocation()
+  const [portalToken, setPortalToken] = useState('')
+  const [busy, setBusy] = useState<'upload' | 'delete' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  // seeded true when we land here after a new draft got the server's GUID
+  const [uploaded, setUploaded] = useState(
+    Boolean((location.state as { uploaded?: boolean } | null)?.uploaded),
+  )
+
+  async function upload(profileId: string) {
+    setActionError(null)
+    setUploaded(false)
+    if (!portalToken.trim()) return setActionError('Вставьте portal token для выгрузки')
+    setBusy('upload')
+    try {
+      const job = await uploadProfile(profileId, portalToken.trim())
+      const done = await pollJob(job.id)
+      if (done.status === 'failed') throw new Error(done.error ?? 'upload failed')
+      await queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      const newId = (done.result as { new_id?: string } | null)?.new_id
+      if (newId && newId !== profileId) {
+        // a new draft was replaced by the server's GUID — the local id is gone,
+        // so land on the real recipe (carry the success flag across the nav)
+        navigate(`/recipes/${newId}`, { replace: true, state: { uploaded: true } })
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ['profile', profileId] })
+      setUploaded(true)
+      setBusy(null)
+    } catch (e) {
+      setActionError(String(e))
+      setBusy(null)
+    }
+  }
+
+  async function remove(profileId: string) {
+    if (!window.confirm('Удалить рецепт локально?')) return
+    setActionError(null)
+    setBusy('delete')
+    try {
+      await deleteProfile(profileId)
+      await queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      navigate('/recipes')
+    } catch (e) {
+      setActionError(String(e))
+      setBusy(null)
+    }
+  }
 
   const back = (
     <a className="back" onClick={() => navigate('/recipes')}>
@@ -83,11 +142,45 @@ export default function RecipeDetail() {
           <div className="muted">{data.profile_type_name ?? 'Профиль'}</div>
         </div>
         <div className="detail-badges">
+          {data.draft ? <span className="badge draft-badge">черновик</span> : null}
           <span className={data.public ? 'badge active' : 'badge'}>
             {data.public ? 'публичный' : 'личный'}
           </span>
         </div>
       </div>
+
+      <div className="recipe-actions">
+        <button type="button" onClick={() => navigate(`/recipes/${data.id}/edit`)}>
+          <i className="fa-solid fa-pen" /> Редактировать
+        </button>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy !== null || !data.draft}
+          title={data.draft ? undefined : 'Нет локальных изменений для выгрузки'}
+          onClick={() => void upload(data.id)}
+        >
+          <i className="fa-solid fa-cloud-arrow-up" />{' '}
+          {busy === 'upload' ? 'Выгрузка…' : 'Выгрузить в RAPT'}
+        </button>
+        {data.draft ? (
+          <button type="button" disabled={busy !== null} onClick={() => void remove(data.id)}>
+            <i className="fa-solid fa-trash" /> {busy === 'delete' ? 'Удаление…' : 'Удалить'}
+          </button>
+        ) : null}
+      </div>
+      <label className="field recipe-token">
+        <span>Portal token (для выгрузки в RAPT)</span>
+        <textarea
+          className="sync-token"
+          rows={2}
+          value={portalToken}
+          onChange={(e) => setPortalToken(e.target.value)}
+          placeholder="Bearer eyJ..."
+        />
+      </label>
+      {uploaded ? <p className="success">Рецепт выгружен в RAPT ✓</p> : null}
+      {actionError ? <p className="error">{actionError}</p> : null}
 
       <section className="stats stats-compact">
         <MetricCard label="Шагов" value={String(steps.length)} icon="fa-solid fa-list-ol" />

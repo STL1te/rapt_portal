@@ -21,7 +21,12 @@ export default function Recipes() {
     <>
       <div className="page-head">
         <h2>Рецепты</h2>
-        <div className="dates muted">Всего: {data.length}</div>
+        <div className="page-head-actions">
+          <span className="dates muted">Всего: {data.length}</span>
+          <button type="button" onClick={() => navigate('/recipes/new')}>
+            <i className="fa-solid fa-plus" /> Новый рецепт
+          </button>
+        </div>
       </div>
 
       <section className="panel">
@@ -38,7 +43,10 @@ export default function Recipes() {
             <tbody>
               {data.map((p) => (
                 <tr key={p.id} className="row" onClick={() => navigate(`/recipes/${p.id}`)}>
-                  <td data-label="Имя">{p.name ?? p.id}</td>
+                  <td data-label="Имя">
+                    {p.name ?? p.id}
+                    {p.draft ? <span className="badge draft-badge">черновик</span> : null}
+                  </td>
                   <td data-label="Тип">{p.profile_type_name ?? '—'}</td>
                   <td data-label="Шагов">{p.step_count}</td>
                   <td data-label="Доступ">
