@@ -462,6 +462,16 @@ def _run_tool(current_session_id: str | None, name: str, arguments: dict) -> dic
     return {"error": "unknown tool"}
 
 
+def _new_llm_client() -> AsyncOpenAI:
+    """Single construction seam for the LLM client so tests can swap it in one place."""
+    return AsyncOpenAI(
+        base_url=LLM_BASE_URL,
+        api_key=LLM_API_KEY,
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=0,
+    )
+
+
 async def _run_chat_completion(
     messages: list[dict],
     *,
@@ -482,12 +492,7 @@ async def _run_chat_completion(
         request["tools"] = tools
         request["tool_choice"] = "auto"
 
-    async with AsyncOpenAI(
-        base_url=LLM_BASE_URL,
-        api_key=LLM_API_KEY,
-        timeout=LLM_TIMEOUT_SECONDS,
-        max_retries=0,
-    ) as client:
+    async with _new_llm_client() as client:
         working_messages = list(messages)
         for _ in range(_MAX_TOOL_ROUNDS):
             response = await client.chat.completions.create(**request)
