@@ -25,7 +25,11 @@ class _SpecModel(BaseModel):
 
 
 class RestSpec(_SpecModel):
-    name: str = Field(min_length=STEP_NAME_MIN_LEN, max_length=STEP_NAME_MAX_LEN)
+    name: str | None = Field(
+        default=None,
+        min_length=STEP_NAME_MIN_LEN,
+        max_length=STEP_NAME_MAX_LEN,
+    )
     temperature_c: float = Field(allow_inf_nan=False)
     duration_seconds: int = Field(gt=0)
     temperature_alert_text: str | None = Field(default=None, min_length=1)
@@ -199,6 +203,7 @@ def _append_rest(
     spec: RecipeSpec,
     previous_temperature: float,
 ) -> float:
+    name = rest.name or f"{rest.temperature_c:g} °C"
     temperature_alerts = _temperature_alerts(rest) if spec.include_temperature_alerts else []
     separate_transition = (
         spec.heat_power_pct is not None
@@ -222,7 +227,7 @@ def _append_rest(
         temperature_alerts = []
     steps.append(
         _step(
-            rest.name,
+            name,
             rest.temperature_c,
             end_type="Duration",
             duration_type="Temperature",

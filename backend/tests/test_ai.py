@@ -911,7 +911,6 @@ def test_compile_recipe_preserves_explicit_low_mash_in():
         "mash_in_alert_text": "Добавить солод",
         "mash_rests": [
             {
-                "name": "Бета-глюкановая пауза",
                 "temperature_c": 45,
                 "duration_seconds": 900,
             }
@@ -922,7 +921,7 @@ def test_compile_recipe_preserves_explicit_low_mash_in():
 
     assert [step["name"] for step in profile["steps"][:2]] == [
         "Mash In",
-        "Бета-глюкановая пауза",
+        "45 °C",
     ]
     assert profile["steps"][0]["temperature"] == 38
     assert profile["steps"][0]["endType"] == "Manual"

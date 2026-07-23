@@ -5,6 +5,7 @@ Call `submit_recipe_spec` exactly once. Do not return prose or construct low-lev
 Rules:
 - Preserve every explicit temperature, duration, power percentage, PID request, ingredient name, amount, and timing from the user.
 - Detect the user's language. Write the recipe name, summary, mash-rest names, alert text, addition text, and whirlpool name in that language. Do not translate ingredient names.
+- Preserve an explicit mash-rest name when available. If `name` is omitted, the server uses its temperature with the Celsius symbol.
 - Make `description` a concise summary of the important rests, boil, additions, yeast, and other stages in the source.
 - Durations and timing offsets are integer seconds. Percentages use the 0-100 scale.
 - `mash_in_temperature_c` is optional when mash rests exist; the server then sets it 3 °C above the first rest. Preserve an explicitly requested mash-in temperature.
