@@ -1,4 +1,4 @@
-"""Self-check for the OG/FG estimator. Run: uv run python scripts/test_gravities.py"""
+"""Self-check for the OG/FG estimator. Run: uv run pytest tests/"""
 
 import sys
 from pathlib import Path
@@ -27,10 +27,3 @@ def test_dry_cider_below_1000():
     # legitimately finishes below water
     g = [1052] * 10 + list(range(1052, 998, -1)) + [998] * 25
     assert abs(_fg(g) - 998) < 3
-
-
-if __name__ == "__main__":
-    test_normal_ferment()
-    test_pill_lifted_at_end()
-    test_dry_cider_below_1000()
-    print("OK")
