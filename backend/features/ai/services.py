@@ -4,7 +4,7 @@ import json
 import logging
 import math
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +74,7 @@ BREW_SYSTEM_PROMPT = _load_prompt("brew.md")
 RECIPE_REVIEW_SYSTEM_PROMPT = _load_prompt("recipe_review.md")
 RECIPE_REVIEW_DEFAULT = _load_prompt("recipe_review_default.md")
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
+RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 CONVERSATION_SUMMARY_PROMPT = _load_prompt("conversation_summary.md")
 DEFAULT_QUESTIONS: dict[str, dict[str, dict[str, str]]] = json.loads(
     _load_prompt("default_questions.json")
@@ -226,6 +227,26 @@ _RECIPE_WIZARD_RESPONSE_FORMAT = {
                     "items": _STEP_SCHEMA,
                 },
                 "alerts": {"type": "array", "maxItems": 0, "items": _ALERT_SCHEMA},
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "recipe_wizard_validation",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "required": ["valid", "errors"],
+            "properties": {
+                "valid": {"type": "boolean"},
+                "errors": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 500},
+                },
             },
             "additionalProperties": False,
         },
@@ -754,6 +775,8 @@ def _repair_hint_from_error(error: Exception) -> str:
             "power already present in the profile. Use it for Mash In, heat transitions, "
             "and Boil; lower power is only for rests."
         )
+    if "heating utilisation appears to use a fractional percentage" in text:
+        return "Write heating percentages on the 0–100 scale: 90%=90 and 50%=50, never 0.9 or 0.5."
     if "rest must have a separate heating step" in text:
         return (
             "When heating and hold power differ, add a separate full-power Target + "
@@ -762,6 +785,32 @@ def _repair_hint_from_error(error: Exception) -> str:
         )
     if "boil must not use rest PID" in text:
         return "Do not enable rest PID for Boil; keep boil power fixed."
+    if "boil completion configuration is invalid" in text:
+        return (
+            "For a timed Boil use Target + Duration, durationType='Temperature', and its "
+            "duration in length. For an untimed Boil use Target + Manual, "
+            "durationType='Manual', and length=null."
+        )
+    if "mash-out completion configuration is invalid" in text:
+        return (
+            "Mash Out must be Target + Duration with durationType='Temperature' and a "
+            "positive length."
+        )
+    if "mash-out heating utilisation does not match rest power" in text:
+        return "Use the same hold power for Mash Out as for the other mash rests."
+    if "mash-out must use rest PID" in text:
+        return "Enable PID for Mash Out when the other mash rests use PID."
+    if "sparge completion configuration is invalid" in text:
+        return "Sparge must be Target + Manual with durationType='Manual' and length=null."
+    if "cooling configuration is invalid" in text:
+        return (
+            "Cooling must be Target + Temperature with durationType='Temperature', "
+            "length=null, heatingUtilisation=0 or null, and PID disabled."
+        )
+    if "target step durationType must not be Start" in text:
+        return "Use durationType='Start' only for Ramp steps, never for Target steps."
+    if "redundant heat transition" in text:
+        return "Remove the heat transition because the preceding step already has that target."
     if "alert" in text and "text is required" in text:
         return "Every step alert requires a clear non-empty alertText in the user's language."
     if "length must be a positive integer" in text:
@@ -789,6 +838,8 @@ def _repair_hint_from_error(error: Exception) -> str:
         return "Set the Mash Out target temperature to 78 °C."
     if "alert occurs after step end" in text:
         return "A Duration alert must not fire after the step ends."
+    if "Recipe mismatches:" in text:
+        return text
     if "fixed profile fields are invalid" in text:
         return "Set public=false, profile_type_id=null, profile_type_name=null, and root alerts=[]."
     if "profile name length is invalid" in text:
@@ -828,6 +879,26 @@ def _validate_generated_profile(raw: str) -> dict:
         if step.heatingUtilisation is not None
     ]
     profile_heat_power = max(heating_values, default=None)
+    positive_heating_values = [value for value in heating_values if value > 0]
+    if positive_heating_values and max(positive_heating_values) <= 1:
+        raise ValueError("heating utilisation appears to use a fractional percentage")
+    mash_rests = [
+        step
+        for step in profile.steps
+        if step.controlType == "Target"
+        and step.endType == "Duration"
+        and not _matches_step_aliases(step.name, _REQUIRED_BREWZILLA_STEPS["Mash Out"])
+        and not _matches_step_aliases(step.name, _REQUIRED_BREWZILLA_STEPS["Boil"])
+    ]
+    lower_rest_powers = {
+        float(step.heatingUtilisation)
+        for step in mash_rests
+        if profile_heat_power is not None
+        and step.heatingUtilisation is not None
+        and step.heatingUtilisation < profile_heat_power
+    }
+    profile_rest_power = next(iter(lower_rest_powers)) if len(lower_rest_powers) == 1 else None
+    mash_rests_use_pid = any(step.pidEnabled is True for step in mash_rests)
 
     for order, step in enumerate(profile.steps):
         step_name = (step.name or "").strip()
@@ -859,7 +930,12 @@ def _validate_generated_profile(raw: str) -> dict:
         if step.controlType == "Ramp" or step.endType == "Duration":
             if not isinstance(step.length, int) or step.length <= 0:
                 raise ValueError(f"step {order} length must be a positive integer")
-        if _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Mash In"]) and (
+        is_mash_in = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Mash In"])
+        is_mash_out = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Mash Out"])
+        is_sparge = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Sparge"])
+        is_boil = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Boil"])
+        is_cooling = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Cooling"])
+        if is_mash_in and (
             step.controlType != "Target"
             or step.endType != "Manual"
             or step.durationType != "Manual"
@@ -868,21 +944,69 @@ def _validate_generated_profile(raw: str) -> dict:
             raise ValueError(f"step {order} mash-in must wait for manual completion")
         if (
             step.controlType == "Target"
+            and step.endType != "Duration"
+            and step.durationType == "Start"
+        ):
+            raise ValueError(f"step {order} target step durationType must not be Start")
+        if (
+            step.controlType == "Target"
             and step.endType == "Duration"
             and step.durationType != "Temperature"
         ):
             raise ValueError(f"step {order} target duration timer must start at temperature")
-        if (
-            _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Mash Out"])
-            and step.temperature != 78
-        ):
+        if is_mash_out and step.temperature != 78:
             raise ValueError(f"step {order} mash-out temperature must be 78")
-        is_mash_in = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Mash In"])
-        is_boil = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Boil"])
-        is_cooling = _matches_step_aliases(step_name, _REQUIRED_BREWZILLA_STEPS["Cooling"])
+        if is_mash_out and (
+            step.controlType != "Target"
+            or step.endType != "Duration"
+            or step.durationType != "Temperature"
+        ):
+            raise ValueError(f"step {order} mash-out completion configuration is invalid")
+        if (
+            is_mash_out
+            and profile_rest_power is not None
+            and step.heatingUtilisation != profile_rest_power
+        ):
+            raise ValueError(f"step {order} mash-out heating utilisation does not match rest power")
+        if is_mash_out and mash_rests_use_pid and step.pidEnabled is not True:
+            raise ValueError(f"step {order} mash-out must use rest PID")
+        if is_sparge and (
+            step.controlType != "Target"
+            or step.endType != "Manual"
+            or step.durationType != "Manual"
+            or step.length is not None
+        ):
+            raise ValueError(f"step {order} sparge completion configuration is invalid")
+        timed_boil = (
+            step.controlType == "Target"
+            and step.endType == "Duration"
+            and step.durationType == "Temperature"
+            and isinstance(step.length, int)
+            and step.length > 0
+        )
+        manual_boil = (
+            step.controlType == "Target"
+            and step.endType == "Manual"
+            and step.durationType == "Manual"
+            and step.length is None
+        )
+        if is_boil and not (timed_boil or manual_boil):
+            raise ValueError(f"step {order} boil completion configuration is invalid")
+        if is_cooling and (
+            step.controlType != "Target"
+            or step.endType != "Temperature"
+            or step.durationType != "Temperature"
+            or step.length is not None
+            or step.heatingUtilisation not in (None, 0)
+            or step.pidEnabled is True
+        ):
+            raise ValueError(f"step {order} cooling configuration is invalid")
         is_heat_transition = (
             step.controlType == "Target" and step.endType == "Temperature" and not is_cooling
         )
+        previous = profile.steps[order - 1] if order > 0 else None
+        if is_heat_transition and previous is not None and previous.temperature == step.temperature:
+            raise ValueError(f"step {order} redundant heat transition")
         if profile_heat_power is not None and (is_mash_in or is_boil or is_heat_transition):
             if step.heatingUtilisation != profile_heat_power:
                 raise ValueError(
@@ -899,7 +1023,6 @@ def _validate_generated_profile(raw: str) -> dict:
             and step.endType == "Duration"
             and not is_boil
         ):
-            previous = profile.steps[order - 1] if order > 0 else None
             previous_is_mash_in = previous is not None and _matches_step_aliases(
                 previous.name, _REQUIRED_BREWZILLA_STEPS["Mash In"]
             )
@@ -997,8 +1120,84 @@ def _validate_generated_profile(raw: str) -> dict:
     return normalized
 
 
-async def generate_profile(description: str) -> dict:
+async def _semantic_profile_errors(description: str, profile: dict) -> list[str]:
+    raw = await _run_chat_completion(
+        [
+            {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"<source_description>{description}</source_description>\n"
+                    f"<candidate_profile>{json.dumps(profile, ensure_ascii=False, separators=(',', ':'))}"
+                    "</candidate_profile>"
+                ),
+            },
+        ],
+        tools=None,
+        current_session_id=None,
+        temperature=0,
+        response_format=_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
+    )
+    result = json.loads(raw)
+    valid = result.get("valid")
+    errors = result.get("errors")
+    if (
+        not isinstance(valid, bool)
+        or not isinstance(errors, list)
+        or any(not isinstance(error, str) or not error.strip() for error in errors)
+        or valid == bool(errors)
+    ):
+        raise ValueError("semantic validator returned an invalid result")
+    return [error.strip() for error in errors]
+
+
+def _semantic_validation_candidate(raw: str) -> dict | None:
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        return None
+    profile = ProfileIn.model_validate(data)
+    if not profile.description or not profile.description.strip() or not profile.steps:
+        return None
+    return profile.model_dump()
+
+
+async def _validated_generated_profile(
+    raw: str,
+    description: str,
+    on_progress: Callable[[str], None] | None,
+    *,
+    retry: bool,
+) -> dict:
+    on_progress and on_progress("checking_fixed_structure" if retry else "checking_structure")
+    structural_error: Exception | None = None
+    try:
+        profile = _validate_generated_profile(raw)
+    except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
+        structural_error = error
+        candidate = _semantic_validation_candidate(raw)
+        if candidate is None:
+            raise
+    else:
+        candidate = profile
+
+    on_progress and on_progress("checking_fixed_recipe" if retry else "checking_recipe")
+    semantic_errors = await _semantic_profile_errors(description, candidate)
+    if structural_error or semantic_errors:
+        error_groups = []
+        if structural_error:
+            error_groups.append(f"Structural errors:\n- {structural_error}")
+        if semantic_errors:
+            error_groups.append("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
+        raise ValueError("\n".join(error_groups))
+    return profile
+
+
+async def generate_profile(
+    description: str,
+    on_progress: Callable[[str], None] | None = None,
+) -> dict:
     messages = _recipe_wizard_messages(description)
+    on_progress and on_progress("generating")
     raw = await _run_chat_completion(
         messages,
         tools=None,
@@ -1007,8 +1206,9 @@ async def generate_profile(description: str) -> dict:
         response_format=_RECIPE_WIZARD_RESPONSE_FORMAT,
     )
     try:
-        return _validate_generated_profile(raw)
+        return await _validated_generated_profile(raw, description, on_progress, retry=False)
     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
+        on_progress and on_progress("repairing")
         repair_hint = _repair_hint_from_error(error)
         retry_messages = [
             *messages,
@@ -1025,7 +1225,8 @@ async def generate_profile(description: str) -> dict:
                     "Required skeleton: Mash In, clearly named mash rests, Mash Out, Sparge, "
                     "Boil, Cooling. For Target + Duration always use "
                     "durationType='Temperature'. Defaults: Mash Out 78 °C, Sparge 78 °C, "
-                    "Cooling 20 °C. Add Duration alerts to Boil for boil hop additions. "
+                    "Cooling 20 °C. Add Duration alerts to Boil for all timed additions, "
+                    "including hops and spices. "
                     f"Repair: {repair_hint} "
                     f"Validation error: {error}"
                 ),
@@ -1039,7 +1240,9 @@ async def generate_profile(description: str) -> dict:
             response_format=_RECIPE_WIZARD_RESPONSE_FORMAT,
         )
         try:
-            return _validate_generated_profile(retry_raw)
+            return await _validated_generated_profile(
+                retry_raw, description, on_progress, retry=True
+            )
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as retry_error:
             logger.warning("Recipe wizard returned invalid profile twice: %s", retry_error)
             raise ValueError("Модель не смогла собрать корректный профиль") from retry_error

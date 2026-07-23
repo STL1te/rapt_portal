@@ -1727,6 +1727,74 @@ th {
   color: var(--muted);
 }
 
+.recipe-wizard-progress {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+
+.recipe-wizard-progress > i {
+  grid-row: 1;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.recipe-wizard-progress div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recipe-wizard-progress strong {
+  font-size: 14px;
+}
+
+.recipe-wizard-progress div span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.recipe-wizard-progress-bar {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.recipe-wizard-progress-bar::after {
+  position: absolute;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  content: '';
+  animation: recipe-wizard-progress 1.2s ease-in-out infinite;
+}
+
+@keyframes recipe-wizard-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recipe-wizard-progress-bar::after {
+    width: 100%;
+    animation: none;
+  }
+}
+
 .recipe-wizard-actions {
   display: flex;
   gap: 8px;

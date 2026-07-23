@@ -26,6 +26,7 @@ from core.db import (
     HydrometerTelemetry,
     Profile,
 )
+from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
 from features.ai.services import (
     _RECENT_MESSAGES,
     _SUMMARY_TRIGGER_MESSAGES,
@@ -291,7 +292,7 @@ _VALID_WIZARD_JSON = json.dumps(
                 "order": 3,
                 "controlType": "Target",
                 "endType": "Manual",
-                "durationType": "Start",
+                "durationType": "Manual",
                 "operator": None,
                 "length": None,
                 "temperature": 78.0,
@@ -341,7 +342,7 @@ _VALID_WIZARD_JSON = json.dumps(
                 "order": 10,
                 "controlType": "Target",
                 "endType": "Temperature",
-                "durationType": "Start",
+                "durationType": "Temperature",
                 "operator": None,
                 "length": None,
                 "temperature": 20.0,
@@ -360,6 +361,7 @@ _VALID_WIZARD_JSON = json.dumps(
     },
     ensure_ascii=False,
 )
+_VALID_SEMANTIC_VALIDATION = '{"valid":true,"errors":[]}'
 
 
 async def main() -> None:
@@ -521,11 +523,19 @@ async def main() -> None:
         assert utf_turn["user_message"]["content"] == "Русский вопрос: всё ок?"
         assert utf_turn["assistant_message"]["content"] == "Ответ по-русски: всё нормально."
 
-        wizard_factory = _FakeOpenAIFactory([[_message(_VALID_WIZARD_JSON)]])
+        wizard_factory = _FakeOpenAIFactory(
+            [
+                [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
+            ]
+        )
+        wizard_stages: list[str] = []
         with patch("features.ai.services.AsyncOpenAI", wizard_factory):
             profile = await generate_profile(
-                "Американский pale ale, 23 литра. Кип 60 минут, хмель за 15 минут до конца."
+                "Американский pale ale, 23 литра. Кип 60 минут, хмель за 15 минут до конца.",
+                wizard_stages.append,
             )
+        assert wizard_stages == ["generating", "checking_structure", "checking_recipe"]
         assert profile["public"] is False
         assert profile["profile_type_id"] is None
         assert profile["profile_type_name"] is None
@@ -570,6 +580,30 @@ async def main() -> None:
             assert token in wizard_system
         assert "same language" in wizard_system
         assert "required service step names" in wizard_system
+        semantic_request = wizard_factory.requests[1]
+        assert (
+            semantic_request["response_format"]["json_schema"]["name"] == "recipe_wizard_validation"
+        )
+        assert "<source_description>" in semantic_request["messages"][1]["content"]
+        assert "<candidate_profile>" in semantic_request["messages"][1]["content"]
+
+        stream_factory = _FakeOpenAIFactory(
+            [
+                [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
+            ]
+        )
+        with patch("features.ai.services.AsyncOpenAI", stream_factory):
+            stream_response = await recipe_wizard_stream_endpoint(
+                RecipeWizardRequest(description="Кип 60 минут")
+            )
+            stream_events = [json.loads(chunk) async for chunk in stream_response.body_iterator]
+        assert [event["stage"] for event in stream_events[:-1]] == [
+            "generating",
+            "checking_structure",
+            "checking_recipe",
+        ]
+        assert stream_events[-1]["type"] == "result"
 
         def assert_wizard_error(mutator, expected: str) -> None:
             invalid = json.loads(_VALID_WIZARD_JSON)
@@ -585,6 +619,77 @@ async def main() -> None:
             lambda data: data["steps"][1].__setitem__("durationType", "Start"),
             "target duration timer must start at temperature",
         )
+        assert_wizard_error(
+            lambda data: (
+                data["steps"][0].update(heatingUtilisation=0.9),
+                data["steps"][1].update(heatingUtilisation=0.5),
+                data["steps"][2].update(heatingUtilisation=0.5),
+                data["steps"][4].update(heatingUtilisation=0.9),
+                data["steps"][5].update(heatingUtilisation=0),
+            ),
+            "heating utilisation appears to use a fractional percentage",
+        )
+        assert_wizard_error(
+            lambda data: data["steps"][2].__setitem__("endType", "Temperature"),
+            "mash-out completion configuration is invalid",
+        )
+        assert_wizard_error(
+            lambda data: data["steps"][3].__setitem__("durationType", "Temperature"),
+            "sparge completion configuration is invalid",
+        )
+        assert_wizard_error(
+            lambda data: data["steps"][4].__setitem__("endType", "Temperature"),
+            "boil completion configuration is invalid",
+        )
+        assert_wizard_error(
+            lambda data: data["steps"][5].__setitem__("pidEnabled", True),
+            "cooling configuration is invalid",
+        )
+        assert_wizard_error(
+            lambda data: data["steps"][5].__setitem__("durationType", "Start"),
+            "target step durationType must not be Start",
+        )
+
+        def add_redundant_transition(data: dict) -> None:
+            data["steps"].insert(
+                3,
+                {
+                    **data["steps"][2],
+                    "name": "Heat to 78",
+                    "endType": "Temperature",
+                    "durationType": "Temperature",
+                    "length": None,
+                    "alerts": [],
+                },
+            )
+
+        assert_wizard_error(add_redundant_transition, "redundant heat transition")
+
+        def set_wrong_mash_out_power(data: dict) -> None:
+            data["steps"][0]["heatingUtilisation"] = 90
+            data["steps"].insert(
+                1,
+                {
+                    **data["steps"][1],
+                    "name": "Heat to first rest",
+                    "endType": "Temperature",
+                    "durationType": "Temperature",
+                    "length": None,
+                    "heatingUtilisation": 90,
+                    "pidEnabled": False,
+                    "alerts": [],
+                },
+            )
+            data["steps"][2].update(heatingUtilisation=50, pidEnabled=True)
+            data["steps"][3].update(heatingUtilisation=90, pidEnabled=False)
+            data["steps"][5]["heatingUtilisation"] = 90
+            data["steps"][6]["heatingUtilisation"] = 0
+
+        assert_wizard_error(
+            set_wrong_mash_out_power,
+            "mash-out heating utilisation does not match rest power",
+        )
+
         assert_wizard_error(
             lambda data: data["steps"][2].__setitem__("temperature", 76),
             "mash-out temperature must be 78",
@@ -639,12 +744,16 @@ async def main() -> None:
             raise AssertionError("Expected invalid boil heating utilisation")
 
         retry_factory = _FakeOpenAIFactory(
-            [[_message('{"name":"bad"}')], [_message(_VALID_WIZARD_JSON)]]
+            [
+                [_message('{"name":"bad"}')],
+                [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
+            ]
         )
         with patch("features.ai.services.AsyncOpenAI", retry_factory):
             retried_profile = await generate_profile("Собери профиль IPA с кипом 60 минут")
         assert retried_profile["steps"][0]["order"] == 0
-        assert len(retry_factory.requests) == 2
+        assert len(retry_factory.requests) == 3
         retry_messages = retry_factory.requests[1]["messages"]
         assert retry_messages[-2] == {"role": "assistant", "content": '{"name":"bad"}'}
         assert "Validation error:" in retry_messages[-1]["content"]
@@ -652,6 +761,59 @@ async def main() -> None:
         assert "fixed profile fields are invalid" in retry_messages[-1]["content"]
         assert "public=false" in retry_messages[-1]["content"]
         assert "original user recipe" in retry_messages[-1]["content"]
+
+        semantic_retry_factory = _FakeOpenAIFactory(
+            [
+                [_message(_VALID_WIZARD_JSON)],
+                [
+                    _message(
+                        '{"valid":false,"errors":["Boil spice alert length: expected 3000, actual 600."]}'
+                    )
+                ],
+                [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
+            ]
+        )
+        semantic_retry_stages: list[str] = []
+        with patch("features.ai.services.AsyncOpenAI", semantic_retry_factory):
+            semantic_profile = await generate_profile(
+                "Кип 60 минут. Специи за 10 минут до конца кипа.",
+                semantic_retry_stages.append,
+            )
+        assert semantic_retry_stages == [
+            "generating",
+            "checking_structure",
+            "checking_recipe",
+            "repairing",
+            "checking_fixed_structure",
+            "checking_fixed_recipe",
+        ]
+        assert semantic_profile["steps"][4]["length"] == 3600
+        semantic_retry_message = semantic_retry_factory.requests[2]["messages"][-1]["content"]
+        assert "Recipe mismatches:" in semantic_retry_message
+        assert "expected 3000, actual 600" in semantic_retry_message
+
+        structurally_invalid = json.loads(_VALID_WIZARD_JSON)
+        structurally_invalid["steps"][4]["endType"] = "Temperature"
+        combined_retry_factory = _FakeOpenAIFactory(
+            [
+                [_message(json.dumps(structurally_invalid))],
+                [
+                    _message(
+                        '{"valid":false,"errors":["Missing zest alert: expected 30-60 g at 3000 seconds."]}'
+                    )
+                ],
+                [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
+            ]
+        )
+        with patch("features.ai.services.AsyncOpenAI", combined_retry_factory):
+            await generate_profile("Кип 60 минут. Цедра 30-60 г за 10 минут до конца.")
+        combined_retry_message = combined_retry_factory.requests[2]["messages"][-1]["content"]
+        assert "Structural errors:" in combined_retry_message
+        assert "boil completion configuration is invalid" in combined_retry_message
+        assert "Recipe mismatches:" in combined_retry_message
+        assert "Missing zest alert" in combined_retry_message
 
         failed_retry_factory = _FakeOpenAIFactory([[_message('{"name":"bad"}')], [_message("[]")]])
         with patch("features.ai.services.AsyncOpenAI", failed_retry_factory):
@@ -814,7 +976,7 @@ async def main() -> None:
                                         "order": 2,
                                         "controlType": "Target",
                                         "endType": "Manual",
-                                        "durationType": "Start",
+                                        "durationType": "Manual",
                                         "operator": None,
                                         "length": None,
                                         "temperature": 78,
@@ -864,7 +1026,7 @@ async def main() -> None:
                                         "order": 4,
                                         "controlType": "Target",
                                         "endType": "Temperature",
-                                        "durationType": "Start",
+                                        "durationType": "Temperature",
                                         "operator": None,
                                         "length": None,
                                         "temperature": 20,
@@ -884,13 +1046,15 @@ async def main() -> None:
                         )
                     )
                 ],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
                 [_message(_VALID_WIZARD_JSON)],
+                [_message(_VALID_SEMANTIC_VALIDATION)],
             ]
         )
         with patch("features.ai.services.AsyncOpenAI", missing_alert_text_factory):
             repaired_profile = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
         assert repaired_profile["steps"][4]["alerts"][0]["alertText"]
-        alert_retry_message = missing_alert_text_factory.requests[1]["messages"][-1]["content"]
+        alert_retry_message = missing_alert_text_factory.requests[2]["messages"][-1]["content"]
         assert "clear non-empty alertText in the user's language" in alert_retry_message
 
         reset_factory = _FakeOpenAIFactory([[_message("Новая стартовая оценка.")]])

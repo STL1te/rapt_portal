@@ -1,7 +1,14 @@
 import { type DragEvent, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createProfile, generateProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
+import {
+  createProfile,
+  generateProfile,
+  getProfile,
+  getProfileTypes,
+  updateProfile,
+  type RecipeGenerationStage,
+} from '@/api'
 import { CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
 import type {
   AlertTrigger,
@@ -91,6 +98,14 @@ const END_SHORT: Record<string, string> = {
 }
 // RAPT's Heating % dropdown: Manual Control (→ null) or 100..5 step 5
 const HEATING_OPTIONS = Array.from({ length: 20 }, (_, i) => 100 - i * 5)
+const WIZARD_STAGE_LABEL: Record<RecipeGenerationStage, string> = {
+  generating: 'Модель собирает профиль…',
+  checking_structure: 'Проверяем шаги и параметры…',
+  checking_recipe: 'Сверяем профиль с исходным рецептом…',
+  repairing: 'Исправляем найденные несоответствия…',
+  checking_fixed_structure: 'Проверяем исправленные шаги…',
+  checking_fixed_recipe: 'Повторно сверяем с рецептом…',
+}
 
 // step duration (stored in seconds) is entered in a chosen unit (RAPT: min/hr/day)
 const DUR_UNIT_SEC = { minutes: 60, hours: 3600, days: 86400 } as const
@@ -644,6 +659,7 @@ export default function RecipeEditor() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardDescription, setWizardDescription] = useState('')
   const [wizardLoading, setWizardLoading] = useState(false)
+  const [wizardStage, setWizardStage] = useState<RecipeGenerationStage | null>(null)
   const markDirty = () => setDirty(true)
 
   // selected profile type drives the whole form shape (steps vs Pill alerts, etc.)
@@ -797,14 +813,16 @@ export default function RecipeEditor() {
     }
 
     setWizardLoading(true)
+    setWizardStage('generating')
     try {
-      const profile = await generateProfile(trimmedDescription)
+      const profile = await generateProfile(trimmedDescription, setWizardStage)
       applyGeneratedProfile(profile)
       setWizardOpen(false)
     } catch {
       setError('Не удалось собрать профиль через AI-мастер')
     } finally {
       setWizardLoading(false)
+      setWizardStage(null)
     }
   }
 
@@ -894,6 +912,16 @@ export default function RecipeEditor() {
               onChange={(e) => setWizardDescription(e.target.value)}
             />
           </label>
+          {wizardLoading && wizardStage ? (
+            <div className="recipe-wizard-progress" role="status" aria-live="polite">
+              <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
+              <div>
+                <strong>{WIZARD_STAGE_LABEL[wizardStage]}</strong>
+                <span>Это может занять несколько минут.</span>
+              </div>
+              <span className="recipe-wizard-progress-bar" aria-hidden="true" />
+            </div>
+          ) : null}
           <div className="recipe-wizard-actions">
             <button type="button" disabled={wizardLoading} onClick={() => setWizardOpen(false)}>
               Отмена
@@ -904,6 +932,10 @@ export default function RecipeEditor() {
               disabled={wizardLoading}
               onClick={() => void submitWizard()}
             >
+              <i
+                className={`fa-solid ${wizardLoading ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}
+                aria-hidden="true"
+              />{' '}
               {wizardLoading ? 'Собираем…' : 'Собрать профиль'}
             </button>
           </div>

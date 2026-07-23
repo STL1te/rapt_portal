@@ -1,9 +1,12 @@
 """Server-owned AI conversations backed by an OpenAI-compatible API."""
 
+import asyncio
+import json
 import logging
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
@@ -102,3 +105,44 @@ async def recipe_wizard_endpoint(request: RecipeWizardRequest) -> dict:
         raise HTTPException(422, str(error)) from error
     except (APIConnectionError, OpenAIError) as error:
         _raise_ai_error(error)
+
+
+@router.post("/api/ai/recipe-wizard/stream")
+async def recipe_wizard_stream_endpoint(request: RecipeWizardRequest) -> StreamingResponse:
+    async def events():
+        queue: asyncio.Queue[dict] = asyncio.Queue()
+
+        async def run() -> None:
+            try:
+                profile = await generate_profile(
+                    request.description,
+                    lambda stage: queue.put_nowait({"type": "progress", "stage": stage}),
+                )
+                await queue.put({"type": "result", "profile": profile})
+            except ValueError as error:
+                await queue.put({"type": "error", "message": str(error)})
+            except APIConnectionError:
+                await queue.put({"type": "error", "message": "LLM is unavailable"})
+            except OpenAIError:
+                logger.exception("LLM request failed")
+                await queue.put({"type": "error", "message": "LLM request failed"})
+            except Exception:
+                logger.exception("Recipe wizard stream failed")
+                await queue.put({"type": "error", "message": "Recipe generation failed"})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
+                if event["type"] in ("result", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
