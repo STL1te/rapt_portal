@@ -96,8 +96,8 @@ const END_SHORT: Record<string, string> = {
   GravityVelocity: 'по скорости плотности',
   Manual: 'вручную',
 }
-// RAPT's Heating % dropdown: Manual Control (→ null) or 100..5 step 5
-const HEATING_OPTIONS = Array.from({ length: 20 }, (_, i) => 100 - i * 5)
+// RAPT's Heating % dropdown: Manual Control (→ null) or 100..0 step 5
+const HEATING_OPTIONS = Array.from({ length: 21 }, (_, i) => 100 - i * 5)
 const WIZARD_STAGE_LABEL: Record<RecipeGenerationStage, string> = {
   generating: 'Модель собирает профиль…',
   checking_structure: 'Проверяем шаги и параметры…',

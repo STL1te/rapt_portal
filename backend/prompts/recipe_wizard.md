@@ -16,12 +16,13 @@ Rules:
 - An explicit grain-addition temperature overrides the 3 °C default even when it is below the first rest. Use it for `mash_in_temperature_c`.
 - Mirror the RAPT setup defaults unless the user explicitly overrides them: `include_temperature_alerts=true`, `include_sparge=true`, and `include_mash_out=true`. Set a flag to false when the user asks to omit that feature.
 - When `include_temperature_alerts=true`, `mash_in_alert_text` must clearly tell the user to add grain.
+- Use `mash_additions` for every additional ingredient the source explicitly asks the user to add at a temperature. This represents an alert, not a timed mash rest; preserve its ingredient text and temperature even when no duration is given.
 - When the user requests an alert at the end of a mash rest, fill that rest's `end_alert_text`. Preserve requests for alerts on every rest by filling it for every listed rest.
 - Put an alert requested for sparging or rinsing grain in `sparge_alert_text`.
 - Do not invent mash rests, ingredients, additions, power settings, PID, or whirlpool stages.
 - Every `boil_additions` item must include `text`, `timing_reference`, and `offset_seconds`. Never submit a boil addition with missing timing fields.
 - Boil additions use `timing_reference="before_end"` for phrases such as "15 minutes before the end", and `timing_reference="from_start"` for elapsed timing such as "15 minutes after boil starts".
-- Recipe lines meaning an ingredient should `boil for N minutes` mean the ingredient must boil for the final N minutes. Use `timing_reference="before_end"` and `offset_seconds=N*60`, not `from_start`, unless the source explicitly says the timing is elapsed from boil start.
+- A source statement that an ingredient boils for N minutes means the ingredient must boil for the final N minutes. Use `timing_reference="before_end"` and `offset_seconds=N*60`, not `from_start`, unless the source explicitly says the timing is elapsed from boil start.
 - Put the complete ingredient name, amount, and timing in each boil addition's `text`.
 - A final 78 °C mash pause is Mash Out: omit it from `mash_rests`, put its duration in `mash_out_duration_seconds`, and put its requested end alert in `mash_out_end_alert_text`.
 - Use the server defaults when the user does not override them: 10-minute Mash Out at 78 °C, Sparge at 78 °C, boil at 100 °C, no whirlpool, and cooling to 20 °C.

@@ -1697,7 +1697,7 @@ th {
 .alert-row select,
 .alert-row input {
   border: 1px solid var(--border);
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
   border-radius: var(--radius-sm);
   padding: var(--space-xs) var(--space-sm);

@@ -21,6 +21,9 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://host.docker.internal:11434/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "not-needed")
 LLM_MODEL = os.getenv("LLM_MODEL", "local-model")
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "900"))
+LLM_RESPONSE_FORMAT = os.getenv("LLM_RESPONSE_FORMAT", "auto").strip().lower()
+if LLM_RESPONSE_FORMAT not in {"auto", "json_schema", "json_object", "none"}:
+    raise ValueError("LLM_RESPONSE_FORMAT must be one of: auto, json_schema, json_object, none")
 
 # Зашиты в код: подбираются под модель, а не под окружение.
 LLM_TEMPERATURE = 0.2

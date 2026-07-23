@@ -43,6 +43,7 @@ SubjectType = Literal["brew_session", "fermentation_session", "recipe"]
 
 _MAX_TELEMETRY_POINTS = 48
 _MAX_TOOL_ROUNDS = 4
+_LLM_MAX_RETRIES = 2
 _MAX_LISTED_SESSIONS = 30
 _RECENT_MESSAGES = 12
 _SUMMARY_TRIGGER_MESSAGES = 24
@@ -468,7 +469,7 @@ def _new_llm_client() -> AsyncOpenAI:
         base_url=LLM_BASE_URL,
         api_key=LLM_API_KEY,
         timeout=LLM_TIMEOUT_SECONDS,
-        max_retries=0,
+        max_retries=_LLM_MAX_RETRIES,
     )
 
 

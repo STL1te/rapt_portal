@@ -78,6 +78,7 @@ LLM_BASE_URL=http://host.docker.internal:11434/v1
 LLM_API_KEY=ollama
 LLM_MODEL=qwen3:8b
 LLM_TIMEOUT_SECONDS=900
+LLM_RESPONSE_FORMAT=auto
 ```
 
 `LLM_TIMEOUT_SECONDS` allows the first request to wait while Ollama loads a
@@ -226,6 +227,8 @@ Root `.env`:
 - `LLM_API_KEY` - API key; Ollama accepts the placeholder `ollama`.
 - `LLM_MODEL` - model name. Default: `qwen3:8b`.
 - `LLM_TIMEOUT_SECONDS` - maximum LLM request time. Default: `900` seconds.
+- `LLM_RESPONSE_FORMAT` - semantic-validator output format: `auto`, `json_schema`,
+  `json_object`, or `none`. Default: `auto`.
 
 Generation controls (temperature, top_p) are hardcoded in `core/config.py`.
 

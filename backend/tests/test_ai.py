@@ -8,8 +8,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 import sqlalchemy as sa
+from openai import BadRequestError
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,13 +27,22 @@ from core.db import (
     HydrometerTelemetry,
     Profile,
 )
-from features.ai.recipe_wizard import RecipeSpec, compile_recipe, generate_profile
+from features.ai.recipe_wizard import (
+    RECIPE_WIZARD_VALIDATOR_PROMPT,
+    RecipeSpec,
+    _parse_semantic_validation,
+    _run_semantic_validator,
+    _validator_response_formats,
+    compile_recipe,
+    generate_profile,
+)
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
 from features.ai.services import (
     _RECENT_MESSAGES,
     _SUMMARY_TRIGGER_MESSAGES,
     DEFAULT_INSTRUCTIONS,
     _localized_default_question,
+    _new_llm_client,
     _sample,
     open_conversation,
     reset_conversation,
@@ -433,6 +444,58 @@ def _raise(exc: Exception):
     return _boom
 
 
+def test_llm_client_retries_transient_failures(monkeypatch):
+    captured: dict = {}
+
+    def create_client(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("features.ai.services.AsyncOpenAI", create_client)
+
+    _new_llm_client()
+
+    assert captured["max_retries"] == 2
+
+
+def test_semantic_validator_accepts_fenced_json():
+    assert _parse_semantic_validation('```json\n{"valid":true,"errors":[]}\n```') == []
+
+
+def test_semantic_validator_honors_configured_response_format(monkeypatch):
+    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "json_object")
+
+    assert _validator_response_formats() == (("JSON mode", {"type": "json_object"}),)
+
+
+async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, caplog):
+    requests: list[dict] = []
+
+    async def complete(_messages, **kwargs):
+        requests.append(kwargs)
+        if len(requests) < 3:
+            raise BadRequestError(
+                "response_format is unavailable",
+                response=httpx.Response(
+                    400,
+                    request=httpx.Request("POST", "https://llm.example.test/v1/chat/completions"),
+                ),
+                body=None,
+            )
+        return '{"valid":true,"errors":[]}'
+
+    monkeypatch.setattr("features.ai.recipe_wizard._run_chat_completion", complete)
+    spec = RecipeSpec.model_validate(_VALID_RECIPE_SPEC)
+
+    result = await _run_semantic_validator("Recipe description", spec, compile_recipe(spec))
+
+    assert _parse_semantic_validation(result) == []
+    assert requests[0]["response_format"]["type"] == "json_schema"
+    assert requests[1]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in requests[2]
+    assert "LLM response format is incompatible" in caplog.text
+
+
 def _seed_long_conversation(session_factory):
     """A recipe conversation whose unsummarized history exceeds the trigger."""
     with session_factory() as session:
@@ -726,13 +789,14 @@ async def test_generate_profile_happy_path(install_llm):
     }
     request = factory.requests[0]
     assert request["temperature"] == 0
-    assert request["tool_choice"] == "required"
+    assert request["tool_choice"] == "auto"
     assert len(request["tools"]) == 1
     tool = request["tools"][0]["function"]
     assert tool["name"] == "submit_recipe_spec"
     schema = tool["parameters"]
     assert schema["additionalProperties"] is False
     assert "steps" not in schema["properties"]
+    assert "mash_additions" in schema["properties"]
     assert "mash_rests" in schema["properties"]
     assert "boil_additions" in schema["properties"]
     assert "include_sparge" in schema["properties"]
@@ -741,7 +805,7 @@ async def test_generate_profile_happy_path(install_llm):
     assert "Do not omit or guess" in rest_schema["duration_seconds"]["description"]
     assert "45 °C for 15 minutes" in rest_schema["duration_seconds"]["description"]
     addition_schema = schema["$defs"]["BoilAdditionSpec"]["properties"]
-    assert "boil for N minutes" in addition_schema["timing_reference"]["description"]
+    assert "boils for N minutes" in addition_schema["timing_reference"]["description"]
     assert "Do not omit" in addition_schema["offset_seconds"]["description"]
     assert "boil for 5 minutes" in addition_schema["offset_seconds"]["description"]
     assert "pump_enabled" not in schema["properties"]
@@ -753,12 +817,35 @@ async def test_generate_profile_happy_path(install_llm):
     assert "Never submit partial objects" in wizard_system
     assert "45 °C for 15 minutes" in wizard_system
     assert "Never submit a boil addition with missing timing fields" in wizard_system
-    assert "boil for N minutes" in wizard_system
+    assert "Use `mash_additions`" in wizard_system
+    validator_system = RECIPE_WIZARD_VALIDATOR_PROMPT
+    assert "compiler_defaults" in validator_system
+    assert "expected and actual values already match" in validator_system
+    assert "boils for N minutes" in wizard_system
     semantic_request = factory.requests[1]
-    assert semantic_request["response_format"]["json_schema"]["name"] == "recipe_wizard_validation"
+    assert semantic_request["response_format"]["type"] == "json_schema"
     assert semantic_request["max_tokens"] == 16_384
-    assert "<source_description>" in semantic_request["messages"][1]["content"]
-    assert "<candidate_profile>" in semantic_request["messages"][1]["content"]
+    semantic_content = semantic_request["messages"][1]["content"]
+    assert "<source_description>" in semantic_content
+    assert "<compiler_defaults>" in semantic_content
+    assert "<candidate_spec>" in semantic_content
+    assert "<candidate_profile>" in semantic_content
+    defaults_json = semantic_content.split("<compiler_defaults>", 1)[1].split(
+        "</compiler_defaults>", 1
+    )[0]
+    compiler_defaults = json.loads(defaults_json)
+    spec_json = semantic_content.split("<candidate_spec>", 1)[1].split("</candidate_spec>", 1)[0]
+    candidate_spec = json.loads(spec_json)
+    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
+    sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
+    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
+    cooling = profile["steps"][-1]
+    assert compiler_defaults["mash_out"]["temperature_c"] == mash_out["temperature"]
+    assert compiler_defaults["mash_out"]["duration_seconds"] == mash_out["length"]
+    assert compiler_defaults["sparge"]["temperature_c"] == sparge["temperature"]
+    assert compiler_defaults["boil"]["temperature_c"] == boil["temperature"]
+    assert compiler_defaults["cooling"]["temperature_c"] == cooling["temperature"]
+    assert candidate_spec["boil_additions"] == _VALID_RECIPE_SPEC["boil_additions"]
     assert "Yeast and other" in semantic_request["messages"][0]["content"]
 
 
@@ -1072,6 +1159,22 @@ def test_compile_recipe_applies_defaults_and_boil_timing():
     assert mash_out["temperature"] == 78
     assert mash_out["alerts"][0]["trigger"] == "StepEnd"
     assert profile["steps"][-1]["temperature"] == 20
+
+
+def test_compile_recipe_preserves_explicit_mash_additions():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "mash_additions": [
+            {"text": "Add prepared adjunct", "temperature_c": 33},
+        ],
+    }
+
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    alerts = profile["steps"][0]["alerts"]
+    assert alerts[1]["alertText"] == "Add prepared adjunct"
+    assert alerts[1]["trigger"] == "Temperature"
+    assert alerts[1]["temperature"] == 33
 
 
 def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():

@@ -5,9 +5,10 @@ import logging
 from collections.abc import Callable
 from typing import Literal
 
+from openai import BadRequestError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from core.config import LLM_MODEL, LLM_TOP_P
+from core.config import LLM_BASE_URL, LLM_MODEL, LLM_RESPONSE_FORMAT, LLM_TOP_P
 from features.profiles.enums import STEP_NAME_MAX_LEN, STEP_NAME_MIN_LEN
 from features.profiles.router import ProfileIn
 
@@ -21,6 +22,29 @@ RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
 _VALIDATOR_MAX_TOKENS = 16_384
 _VALIDATOR_PREVIEW_CHARS = 300
+_MASH_OUT_TEMPERATURE_C = 78
+_SPARGE_TEMPERATURE_C = 78
+_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "recipe_wizard_validation",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "required": ["valid", "errors"],
+            "properties": {
+                "valid": {"type": "boolean"},
+                "errors": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 500},
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+_JSON_OBJECT_RESPONSE_FORMAT = {"type": "json_object"}
 
 
 class _SpecModel(BaseModel):
@@ -45,12 +69,21 @@ class RestSpec(_SpecModel):
     end_alert_text: str | None = Field(default=None, min_length=1)
 
 
+class MashAdditionSpec(_SpecModel):
+    text: str = Field(min_length=1, max_length=500)
+    temperature_c: float = Field(
+        allow_inf_nan=False,
+        description="Required temperature in Celsius for this explicit mash ingredient addition.",
+    )
+
+
 class BoilAdditionSpec(_SpecModel):
     text: str = Field(min_length=1, max_length=500)
     timing_reference: Literal["from_start", "before_end"] = Field(
         description=(
             "Use before_end for additions that should boil for the final N minutes, "
-            "including recipe lines meaning 'boil for N minutes'."
+            "including any source statement that an ingredient boils for N minutes. "
+            "A stated boil duration is never elapsed time from the start."
         )
     )
     offset_seconds: int = Field(
@@ -67,6 +100,7 @@ class RecipeSpec(_SpecModel):
     description: str = Field(min_length=12, max_length=2000)
     mash_in_temperature_c: float | None = Field(default=None, allow_inf_nan=False)
     mash_in_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
+    mash_additions: list[MashAdditionSpec] = Field(default_factory=list)
     mash_rests: list[RestSpec] = Field(default_factory=list)
     include_temperature_alerts: bool = True
     include_sparge: bool = True
@@ -84,6 +118,23 @@ class RecipeSpec(_SpecModel):
     cooling_temperature_c: float = Field(default=20, allow_inf_nan=False)
 
 
+def _compiler_defaults() -> dict:
+    fields = RecipeSpec.model_fields
+    return {
+        "mash_out": {
+            "included": fields["include_mash_out"].default,
+            "temperature_c": _MASH_OUT_TEMPERATURE_C,
+            "duration_seconds": fields["mash_out_duration_seconds"].default,
+        },
+        "sparge": {
+            "included": fields["include_sparge"].default,
+            "temperature_c": _SPARGE_TEMPERATURE_C,
+        },
+        "boil": {"temperature_c": fields["boil_temperature_c"].default},
+        "cooling": {"temperature_c": fields["cooling_temperature_c"].default},
+    }
+
+
 _RECIPE_SPEC_TOOL = {
     "type": "function",
     "function": {
@@ -96,33 +147,24 @@ _RECIPE_SPEC_TOOL = {
     },
 }
 
-_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "recipe_wizard_validation",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "required": ["valid", "errors"],
-            "properties": {
-                "valid": {"type": "boolean"},
-                "errors": {
-                    "type": "array",
-                    "maxItems": 20,
-                    "items": {"type": "string", "minLength": 1, "maxLength": 500},
-                },
-            },
-            "additionalProperties": False,
-        },
-    },
-}
-
 
 def _preview(raw: str) -> str:
     compact = " ".join(raw.split())
     if len(compact) > _VALIDATOR_PREVIEW_CHARS:
         compact = f"{compact[:_VALIDATOR_PREVIEW_CHARS]}..."
     return compact
+
+
+def _validator_response_formats() -> tuple[tuple[str, dict], ...]:
+    formats = {
+        "json_schema": ("JSON Schema", _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT),
+        "json_object": ("JSON mode", _JSON_OBJECT_RESPONSE_FORMAT),
+    }
+    if LLM_RESPONSE_FORMAT == "auto":
+        return formats["json_schema"], formats["json_object"]
+    if LLM_RESPONSE_FORMAT == "none":
+        return ()
+    return (formats[LLM_RESPONSE_FORMAT],)
 
 
 def _recipe_wizard_messages(description: str, correction: str | None = None) -> list[dict]:
@@ -142,7 +184,7 @@ async def _extract_recipe_spec(messages: list[dict]) -> RecipeSpec:
         "temperature": 0,
         "top_p": LLM_TOP_P,
         "tools": [_RECIPE_SPEC_TOOL],
-        "tool_choice": "required",
+        "tool_choice": "auto",
     }
     async with ai_services._new_llm_client() as client:
         response = await client.chat.completions.create(**request)
@@ -294,7 +336,7 @@ def compile_recipe(spec: RecipeSpec) -> dict:
     if spec.include_mash_out:
         mash_out = RestSpec(
             name="Mash Out",
-            temperature_c=78,
+            temperature_c=_MASH_OUT_TEMPERATURE_C,
             duration_seconds=spec.mash_out_duration_seconds,
             end_alert_text=spec.mash_out_end_alert_text,
         )
@@ -321,6 +363,10 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         if spec.include_temperature_alerts and spec.mash_in_alert_text
         else []
     )
+    mash_in_alerts.extend(
+        _alert(addition.text, "Temperature", temperature=addition.temperature_c)
+        for addition in spec.mash_additions
+    )
     steps = [
         _step(
             "Mash In",
@@ -342,15 +388,15 @@ def compile_recipe(spec: RecipeSpec) -> dict:
     if spec.include_sparge:
         if (
             not mash_out
-            and previous_temperature < 78
+            and previous_temperature < _SPARGE_TEMPERATURE_C
             and spec.heat_power_pct is not None
             and spec.rest_power_pct is not None
             and spec.heat_power_pct != spec.rest_power_pct
         ):
             steps.append(
                 _step(
-                    "→ 78 °C",
-                    78,
+                    f"→ {_SPARGE_TEMPERATURE_C:g} °C",
+                    _SPARGE_TEMPERATURE_C,
                     end_type="Temperature",
                     duration_type="Temperature",
                     length=None,
@@ -361,7 +407,7 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         steps.append(
             _step(
                 "Sparge",
-                78,
+                _SPARGE_TEMPERATURE_C,
                 end_type="Manual",
                 duration_type="Manual",
                 length=None,
@@ -419,8 +465,13 @@ def _parse_semantic_validation(raw: str) -> list[str]:
         raise ValueError(
             f"semantic validator response was too long: {len(raw)} chars; preview={_preview(raw)!r}"
         )
+    normalized = raw.strip()
+    if normalized.startswith("```"):
+        _, _, normalized = normalized.partition("\n")
+        if normalized.rstrip().endswith("```"):
+            normalized = normalized.rstrip().rsplit("```", 1)[0]
     try:
-        result = json.loads(raw)
+        result = json.loads(normalized)
     except json.JSONDecodeError as error:
         raise ValueError(
             f"semantic validator returned invalid JSON: preview={_preview(raw)!r}"
@@ -445,32 +496,66 @@ def _parse_semantic_validation(raw: str) -> list[str]:
     return [error.strip() for error in errors]
 
 
-async def _run_semantic_validator(description: str, profile: dict) -> str:
-    return await _run_chat_completion(
-        [
-            {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"<source_description>{description}</source_description>\n"
-                    f"<candidate_profile>{json.dumps(profile, ensure_ascii=False, separators=(',', ':'))}"
-                    "</candidate_profile>"
-                ),
-            },
-        ],
-        tools=None,
-        current_session_id=None,
-        temperature=0,
-        response_format=_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
-        max_tokens=_VALIDATOR_MAX_TOKENS,
-    )
+async def _run_semantic_validator(description: str, spec: RecipeSpec, profile: dict) -> str:
+    messages = [
+        {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"<source_description>{description}</source_description>\n"
+                f"<compiler_defaults>{json.dumps(_compiler_defaults(), separators=(',', ':'))}"
+                "</compiler_defaults>\n"
+                f"<candidate_spec>{spec.model_dump_json()}</candidate_spec>\n"
+                f"<candidate_profile>{json.dumps(profile, ensure_ascii=False, separators=(',', ':'))}"
+                "</candidate_profile>"
+            ),
+        },
+    ]
+    request = {
+        "tools": None,
+        "current_session_id": None,
+        "temperature": 0,
+        "max_tokens": _VALIDATOR_MAX_TOKENS,
+    }
+    response_formats = _validator_response_formats()
+    for index, (name, response_format) in enumerate(response_formats):
+        try:
+            return await _run_chat_completion(
+                messages,
+                response_format=response_format,
+                **request,
+            )
+        except BadRequestError as error:
+            if "response_format" not in str(error).lower():
+                raise
+            fallback_available = index < len(response_formats) - 1 or LLM_RESPONSE_FORMAT == "auto"
+            logger.warning(
+                "LLM response format is incompatible: model=%s base_url=%s format=%s status=%s; %s",
+                LLM_MODEL,
+                LLM_BASE_URL,
+                name,
+                error.status_code,
+                "trying the next format" if fallback_available else "no fallback is configured",
+            )
+            if not fallback_available:
+                raise
+    if LLM_RESPONSE_FORMAT == "auto":
+        logger.warning(
+            "LLM supports neither JSON Schema nor JSON mode: model=%s base_url=%s; "
+            "retrying semantic validation without response_format",
+            LLM_MODEL,
+            LLM_BASE_URL,
+        )
+    return await _run_chat_completion(messages, **request)
 
 
-async def _semantic_profile_errors(description: str, profile: dict) -> list[str]:
+async def _semantic_profile_errors(description: str, spec: RecipeSpec, profile: dict) -> list[str]:
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            return _parse_semantic_validation(await _run_semantic_validator(description, profile))
+            return _parse_semantic_validation(
+                await _run_semantic_validator(description, spec, profile)
+            )
         except (json.JSONDecodeError, ValueError) as error:
             last_error = error
             if attempt == 0:
@@ -493,7 +578,7 @@ async def _generate_once(
     on_progress and on_progress("checking_fixed_structure" if retry else "checking_structure")
     profile = compile_recipe(spec)
     on_progress and on_progress("checking_fixed_recipe" if retry else "checking_recipe")
-    semantic_errors = await _semantic_profile_errors(description, profile)
+    semantic_errors = await _semantic_profile_errors(description, spec, profile)
     if semantic_errors:
         raise ValueError("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
     return spec, profile
