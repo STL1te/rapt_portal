@@ -882,10 +882,6 @@ _WIZARD_ERROR_CASES = [
 
 _WIZARD_SPEC_ERROR_CASES = [
     (
-        lambda d: d.__setitem__("mash_in_temperature_c", 72),
-        "mash-in temperature must be 2-4 degrees above the first rest",
-    ),
-    (
         lambda d: d["boil_additions"][0].__setitem__("offset_seconds", 3700),
         "boil addition occurs outside the boil",
     ),
@@ -906,6 +902,30 @@ def test_compile_recipe_rejects_invalid_semantic_spec(mutator, expected):
     with pytest.raises(ValueError) as error:
         compile_recipe(RecipeSpec.model_validate(data))
     assert expected in str(error.value)
+
+
+def test_compile_recipe_preserves_explicit_low_mash_in():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "mash_in_temperature_c": 38,
+        "mash_in_alert_text": "Добавить солод",
+        "mash_rests": [
+            {
+                "name": "Бета-глюкановая пауза",
+                "temperature_c": 45,
+                "duration_seconds": 900,
+            }
+        ],
+    }
+
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    assert [step["name"] for step in profile["steps"][:2]] == [
+        "Mash In",
+        "Бета-глюкановая пауза",
+    ]
+    assert profile["steps"][0]["temperature"] == 38
+    assert profile["steps"][0]["endType"] == "Manual"
 
 
 async def test_generate_profile_repairs_structural_error(install_llm):

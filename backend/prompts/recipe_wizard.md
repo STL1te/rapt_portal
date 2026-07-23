@@ -8,6 +8,7 @@ Rules:
 - Make `description` a concise summary of the important rests, boil, additions, yeast, and other stages in the source.
 - Durations and timing offsets are integer seconds. Percentages use the 0-100 scale.
 - `mash_in_temperature_c` is optional when mash rests exist; the server then sets it 3 °C above the first rest. Preserve an explicitly requested mash-in temperature.
+- An explicit grain-addition temperature overrides the 3 °C default even when it is below the first rest. Use it for `mash_in_temperature_c`.
 - Mirror the RAPT setup defaults unless the user explicitly overrides them: `include_temperature_alerts=true`, `include_sparge=true`, and `include_mash_out=true`. Set a flag to false when the user asks to omit that feature.
 - When `include_temperature_alerts=true`, `mash_in_alert_text` must clearly tell the user to add grain.
 - When the user requests an alert at the end of a mash rest, fill that rest's `end_alert_text`. Preserve requests for alerts on every rest by filling it for every listed rest.

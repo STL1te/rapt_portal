@@ -275,10 +275,6 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         if first_rest_temperature is None:
             raise ValueError("mash-in temperature or at least one mash rest is required")
         mash_in_temperature = first_rest_temperature + 3
-    if first_rest_temperature is not None:
-        delta = mash_in_temperature - first_rest_temperature
-        if not 2 <= delta <= 4:
-            raise ValueError("mash-in temperature must be 2-4 degrees above the first rest")
 
     if spec.include_temperature_alerts and not spec.mash_in_alert_text:
         raise ValueError("mash-in alert text is required when temperature alerts are enabled")
