@@ -124,14 +124,11 @@ Useful commands:
 ```bash
 uv run alembic upgrade head
 uv run python rapt_client.py
-uv run python scripts/test_gravities.py
-uv run python -m scripts.portal_data_sync
 ```
 
-`rapt_client.py` is a login/API smoke test. `scripts/test_gravities.py` checks
-the gravity estimator. `scripts.portal_data_sync` imports historical hydrometer
-sessions from the RAPT web portal API and expects a portal bearer token in
-`backend/.portal_token`.
+`rapt_client.py` is a login/API smoke test. Portal session history sync
+(`portal_data_sync`) and the yeast/profile syncs run from the **System Syncs**
+page in the app; each needs a portal (`rapt-web`) bearer token pasted in.
 
 ## Frontend Development
 

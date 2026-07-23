@@ -2,21 +2,12 @@
 
 The public RAPT API exposes only the *active* session per hydrometer, so past
 sessions come from the portal-only endpoint GetHydrometerProfileSessions, which
-needs a `rapt-web` bearer token. Grab it from the browser: open the RAPT portal,
-DevTools -> Network -> any request -> copy the `Authorization: Bearer ...` value
-(valid ~60 min).
-
-Default mode updates/creates portal sessions and fetches telemetry only for
-newly discovered sessions. Use ``--force`` to re-run telemetry sync for every
-session returned by the portal.
-
-Usage (from backend/):
-  PORTAL_TOKEN="eyJ..." uv run python -m scripts.portal_data_sync
-  PORTAL_TOKEN="eyJ..." uv run python -m scripts.portal_data_sync --force
+needs a `rapt-web` bearer token. Triggered from the System Syncs page via
+``POST /api/portal_data_sync``.
 """
 
-import argparse
 import asyncio
+import json
 import os
 
 import httpx
@@ -47,16 +38,6 @@ def _load_token(portal_token: str | None = None) -> str:
 
 def _safe_name(value: str | None) -> str:
     return ascii(value)[1:-1] if value else "unknown"
-
-
-def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Sync portal session metadata into the local DB")
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="re-fetch telemetry for every portal session instead of only new ones",
-    )
-    return p.parse_args()
 
 
 async def _list_sessions(
@@ -138,8 +119,6 @@ async def portal_data_sync(force: bool = False, portal_token: str | None = None)
 
 
 async def _sync_brewzillas(client: httpx.AsyncClient, token: str, force: bool = False) -> None:
-    import json
-
     for b in await rapt_client.get_brewzillas():
         bid = b["id"]
         sessions = await _list_sessions(
@@ -170,12 +149,3 @@ async def _sync_brewzillas(client: httpx.AsyncClient, token: str, force: bool = 
             if is_new or force:
                 await sync._sync_brew_telemetry(bid, sid)
             await asyncio.sleep(0.5)
-
-
-def main() -> None:
-    args = _parse_args()
-    asyncio.run(portal_data_sync(force=args.force))
-
-
-if __name__ == "__main__":
-    main()

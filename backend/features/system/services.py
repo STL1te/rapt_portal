@@ -10,7 +10,7 @@ from core import sync
 from core.db import SessionLocal, SystemJob
 from features.profiles.services import sync_profiles, upload_profile
 from features.yeasts.services import sync_yeasts
-from scripts.portal_data_sync import portal_data_sync
+from .portal_sync import portal_data_sync
 
 TERMINAL_STATUSES = {"done", "failed"}
 ACTIVE_STATUSES = {"queued", "running"}
