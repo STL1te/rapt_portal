@@ -743,6 +743,7 @@ async def test_generate_profile_happy_path(install_llm):
     assert semantic_request["response_format"]["json_schema"]["name"] == "recipe_wizard_validation"
     assert "<source_description>" in semantic_request["messages"][1]["content"]
     assert "<candidate_profile>" in semantic_request["messages"][1]["content"]
+    assert "Yeast and other" in semantic_request["messages"][0]["content"]
 
 
 async def test_recipe_wizard_stream_emits_progress(install_llm):
@@ -962,14 +963,15 @@ def test_compile_recipe_applies_power_and_pid_rules():
     profile = compile_recipe(RecipeSpec.model_validate(data))
 
     mash_in = profile["steps"][0]
-    first_transition = profile["steps"][1]
-    first_rest = profile["steps"][2]
+    first_rest = profile["steps"][1]
+    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
+    mash_out_transition = profile["steps"][profile["steps"].index(mash_out) - 1]
     boil = next(step for step in profile["steps"] if step["name"] == "Boil")
     assert mash_in["heatingUtilisation"] == 90
-    assert first_transition["endType"] == "Temperature"
-    assert first_transition["heatingUtilisation"] == 90
     assert first_rest["heatingUtilisation"] == 50
     assert first_rest["pidEnabled"] is True
+    assert mash_out_transition["endType"] == "Temperature"
+    assert mash_out_transition["heatingUtilisation"] == 90
     assert boil["heatingUtilisation"] == 90
     assert boil["pidEnabled"] is False
 
@@ -977,6 +979,7 @@ def test_compile_recipe_applies_power_and_pid_rules():
 def test_compile_recipe_applies_defaults_and_boil_timing():
     data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
     data["mash_in_temperature_c"] = None
+    data["mash_out_end_alert_text"] = "Mash Out завершён"
     data["boil_additions"].append(
         {
             "text": "Добавить сахар через 10 минут",
@@ -990,10 +993,57 @@ def test_compile_recipe_applies_defaults_and_boil_timing():
     assert profile["steps"][0]["temperature"] == 70
     boil = next(step for step in profile["steps"] if step["name"] == "Boil")
     assert [alert["length"] for alert in boil["alerts"]] == [2700, 600]
-    assert (
-        next(step for step in profile["steps"] if step["name"] == "Mash Out")["temperature"] == 78
-    )
+    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
+    assert mash_out["temperature"] == 78
+    assert mash_out["alerts"][0]["trigger"] == "StepEnd"
     assert profile["steps"][-1]["temperature"] == 20
+
+
+def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "mash_in_temperature_c": 48,
+        "mash_rests": [
+            {
+                "name": f"Пауза {temperature} °C",
+                "temperature_c": temperature,
+                "duration_seconds": duration * 60,
+                "end_alert_text": f"Пауза {temperature} °C завершена",
+            }
+            for temperature, duration in [(45, 15), (50, 10), (63, 30), (65, 20), (72, 20), (78, 5)]
+        ],
+        "heat_power_pct": 90,
+        "rest_power_pct": 50,
+        "mash_pid_enabled": True,
+        "mash_out_duration_seconds": 600,
+        "mash_out_end_alert_text": "Mash Out завершён",
+        "sparge_alert_text": "Начать промывку",
+    }
+
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    assert profile["steps"][1]["name"] == "Пауза 45 °C"
+    assert profile["steps"][1]["heatingUtilisation"] == 50
+    assert [step["name"] for step in profile["steps"]].count("Mash Out") == 1
+    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
+    assert mash_out["length"] == 300
+    assert mash_out["alerts"][0] == {
+        "id": None,
+        "alertText": "Пауза 78 °C завершена",
+        "trigger": "StepEnd",
+        "operator": None,
+        "temperature": None,
+        "gravity": None,
+        "length": None,
+    }
+    rests = [
+        step
+        for step in profile["steps"]
+        if step["name"].startswith("Пауза") or step["name"] == "Mash Out"
+    ]
+    assert all(any(alert["trigger"] == "StepEnd" for alert in step["alerts"]) for step in rests)
+    sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
+    assert sparge["alerts"][0]["trigger"] == "StepStart"
 
 
 async def test_generate_profile_gives_up_after_second_failure(install_llm):

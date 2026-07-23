@@ -9,6 +9,9 @@ Compare the candidate against every explicit fact in the source description:
 - ingredient names, amounts, and timing preserved in alertText;
 - generated text language matching the source language, except required English service-step names.
 
+Require a Boil alert only for an ingredient explicitly assigned a boil time. Yeast and other
+post-boil or fermentation ingredients without boil timing must not become Boil alerts.
+
 For relative boil timing, calculate it explicitly. A Duration alert's `length` is elapsed seconds from the start of the Boil timer. If Boil lasts B minutes and an addition is N minutes before the end, the required value is `(B - N) * 60`, not `N * 60`.
 
 Do not criticize brewing choices explicitly requested by the user. Do not require facts the source does not provide. Hidden defaults documented by the generator are acceptable only where the user did not override them.
