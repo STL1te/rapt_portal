@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "declaration-property-value-disallowed-list": {
+      "/^(margin|padding|gap|row-gap|column-gap|border-radius|font-size)/": ["/[0-9]px/"]
+    }
+  }
+}

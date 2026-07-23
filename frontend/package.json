@@ -9,6 +9,7 @@
     "fmt": "oxfmt src --write",
     "fmt:check": "oxfmt src --check",
     "lint": "oxlint",
+    "lint:css": "stylelint \"src/**/*.css\"",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.71.0",
+    "stylelint": "^17.14.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }
