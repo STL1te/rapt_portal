@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { assessSession, type AiChatMessage } from '@/api'
+import type { AiAssessment, AiChatMessage } from '@/api'
 
 type Props = {
-  kind: 'brew' | 'fermentation'
-  sessionId: string
-  completed: boolean
   open: boolean
   onClose: () => void
+  // Текст реплики пользователя, показываемый на автозапуск (модель получает
+  // расширенную директиву на бэке).
+  defaultQuestion: string
+  // Обёртка над конкретным эндпоинтом (assessSession / reviewRecipe). null =
+  // дефолтный запрос.
+  ask: (question: string | null, history: AiChatMessage[]) => Promise<AiAssessment>
 }
 
-// Держим в синхроне с DEFAULT_QUESTIONS в backend/features/ai/services.py.
-const DEFAULT_QUESTIONS = {
-  fermentation: { active: 'Как идёт брожение?', done: 'Как прошло брожение?' },
-  brew: { active: 'Как идёт варка?', done: 'Как прошла варка?' },
-} as const
-
-export default function AiAssistant({ kind, sessionId, completed, open, onClose }: Props) {
+export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Props) {
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [question, setQuestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -27,21 +24,16 @@ export default function AiAssistant({ kind, sessionId, completed, open, onClose 
   const messagesEnd = useRef<HTMLDivElement>(null)
   const swipeStartY = useRef<number | null>(null)
 
-  const ask = useCallback(
+  const send = useCallback(
     async (nextQuestion: string | null, history: AiChatMessage[]) => {
-      const sentQuestion = nextQuestion ?? DEFAULT_QUESTIONS[kind][completed ? 'done' : 'active']
-      const nextMessages = [...history, { role: 'user' as const, content: sentQuestion }]
+      const shownQuestion = nextQuestion ?? defaultQuestion
+      const nextMessages = [...history, { role: 'user' as const, content: shownQuestion }]
       setMessages(nextMessages)
       setQuestion('')
       setIsLoading(true)
       setError(null)
       try {
-        const assessment = await assessSession({
-          kind,
-          session_id: sessionId,
-          question: nextQuestion,
-          history,
-        })
+        const assessment = await ask(nextQuestion, history)
         setMessages([
           ...history,
           { role: 'user', content: assessment.question },
@@ -53,14 +45,14 @@ export default function AiAssistant({ kind, sessionId, completed, open, onClose 
         setIsLoading(false)
       }
     },
-    [kind, sessionId, completed],
+    [ask, defaultQuestion],
   )
 
   useEffect(() => {
     if (!open || started.current) return
     started.current = true
-    void ask(null, [])
-  }, [ask, open])
+    void send(null, [])
+  }, [send, open])
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ block: 'end' })
@@ -131,7 +123,7 @@ export default function AiAssistant({ kind, sessionId, completed, open, onClose 
           className="ai-chat-compose"
           onSubmit={(event) => {
             event.preventDefault()
-            if (question.trim() && !isLoading) void ask(question.trim(), messages)
+            if (question.trim() && !isLoading) void send(question.trim(), messages)
           }}
         >
           <textarea
@@ -140,7 +132,7 @@ export default function AiAssistant({ kind, sessionId, completed, open, onClose 
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
-                if (question.trim() && !isLoading) void ask(question.trim(), messages)
+                if (question.trim() && !isLoading) void send(question.trim(), messages)
               }
             }}
             placeholder="Сообщение AI-ассистенту…"

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getBrewSession } from '@/api'
+import { getBrewSession, sessionAssistant } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import BrewChart from '@/components/BrewChart'
 import MetricCard from '@/components/MetricCard'
@@ -115,11 +115,9 @@ export default function BrewSessionPage() {
       </button>
       <AiAssistant
         key={s.id}
-        kind="brew"
-        sessionId={s.id}
-        completed={!s.active}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
+        {...sessionAssistant('brew', s.id, !s.active)}
       />
 
       <section className="session-hero">

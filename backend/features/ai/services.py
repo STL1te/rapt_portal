@@ -18,9 +18,17 @@ from core.config import (
     LLM_TIMEOUT_SECONDS,
     LLM_TOP_P,
 )
-from core.db import BrewSession, BrewTelemetry, HydrometerSession, HydrometerTelemetry, SessionLocal
+from core.db import (
+    BrewSession,
+    BrewTelemetry,
+    HydrometerSession,
+    HydrometerTelemetry,
+    Profile,
+    SessionLocal,
+)
 from features.brewzillas.services import brew_session_dict
 from features.hydrometers.services import session_dict
+from features.profiles.services import profile_dict
 
 AssessmentKind = Literal["brew", "fermentation"]
 _MAX_TELEMETRY_POINTS = 48
@@ -35,6 +43,19 @@ def _load_prompt(name: str) -> str:
 
 FERMENTATION_SYSTEM_PROMPT = _load_prompt("fermentation.md")
 BREW_SYSTEM_PROMPT = _load_prompt("brew.md")
+RECIPE_REVIEW_SYSTEM_PROMPT = _load_prompt("recipe_review.md")
+RECIPE_REVIEW_DEFAULT = _load_prompt("recipe_review_default.md")
+# Короткая реплика пользователя, которую фронт показывает на дефолтный запрос.
+RECIPE_REVIEW_DEFAULT_QUESTION = "Проверь рецепт, всё ли с ним ок?"
+
+# Локальные модели склонны повторять полную оценку на любую реплику (даже на
+# «спасибо»). На втором и последующих ходах напоминаем об этом прямо в
+# user-message — там локальная модель слушается лучше, чем системный промпт.
+_FOLLOW_UP_HINT = (
+    "Это реплика в продолжающемся диалоге, а не новый запрос на полную оценку. "
+    "Ответь коротко и по существу; не повторяй всю оценку и не используй разделы "
+    "«## …», если тебя явно об этом не просят.\n"
+)
 
 # Короткий вопрос, который фронт показывает в чате как реплику пользователя.
 # Ключ — (тип сессии, завершена ли она): у активной и прошедшей сессии разный текст.
@@ -306,7 +327,8 @@ async def assess(
                 f"Текущее время (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n"
                 f"Запрос: {prompt}\n\n"
                 f"<current_session_context>{context}</current_session_context>\n\n"
-                "Ответь только на русском языке."
+                + (_FOLLOW_UP_HINT if history else "")
+                + "Ответь только на русском языке."
             ),
         },
     ]
@@ -343,3 +365,49 @@ async def assess(
                     }
                 )
     return "Не удалось завершить поиск контекста для ответа."
+
+
+def build_recipe_context(db, profile_id: str) -> str:
+    """Saved profile (steps + alerts) as JSON for the recipe-review chat."""
+    profile = db.get(Profile, profile_id)
+    if profile is None:
+        raise LookupError("profile not found")
+    return json.dumps(
+        profile_dict(profile), ensure_ascii=False, default=str, separators=(",", ":")
+    )
+
+
+async def review_recipe(
+    context: str,
+    question: str | None,
+    history: Sequence[dict[str, str]] = (),
+) -> str:
+    """Like assess(), but a single profile in context and no tools (v1)."""
+    prompt = question or RECIPE_REVIEW_DEFAULT
+    temperature = LLM_CHAT_TEMPERATURE if history else LLM_TEMPERATURE
+    messages: list[dict] = [
+        {"role": "system", "content": RECIPE_REVIEW_SYSTEM_PROMPT},
+        *history,
+        {
+            "role": "user",
+            "content": (
+                f"Запрос: {prompt}\n\n"
+                f"<recipe_context>{context}</recipe_context>\n\n"
+                + (_FOLLOW_UP_HINT if history else "")
+                + "Ответь только на русском языке."
+            ),
+        },
+    ]
+    async with AsyncOpenAI(
+        base_url=LLM_BASE_URL,
+        api_key=LLM_API_KEY,
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=0,
+    ) as client:
+        response = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            temperature=temperature,
+            top_p=LLM_TOP_P,
+        )
+        return response.choices[0].message.content or "Модель не вернула ответ."

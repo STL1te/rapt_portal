@@ -15,3 +15,9 @@ export type AiAssessment = {
   model: string
   question: string
 }
+
+export type RecipeReviewRequest = {
+  profile_id: string
+  question: string | null
+  history: AiChatMessage[]
+}

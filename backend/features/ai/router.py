@@ -10,7 +10,15 @@ from pydantic import BaseModel, Field
 from core.config import LLM_MODEL
 from core.db import SessionLocal
 
-from .services import DEFAULT_QUESTIONS, assess, build_context, is_session_completed
+from .services import (
+    DEFAULT_QUESTIONS,
+    RECIPE_REVIEW_DEFAULT_QUESTION,
+    assess,
+    build_context,
+    build_recipe_context,
+    is_session_completed,
+    review_recipe,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,6 +34,12 @@ class AssessmentRequest(BaseModel):
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=4000)
+
+
+class RecipeReviewRequest(BaseModel):
+    profile_id: str = Field(min_length=1, max_length=128)
+    question: str | None = Field(default=None, max_length=2000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
 
 
 @router.post("/api/ai/assessments")
@@ -57,4 +71,32 @@ async def create_assessment(request: AssessmentRequest) -> dict:
         "answer": answer,
         "model": LLM_MODEL,
         "question": request.question or DEFAULT_QUESTIONS[(request.kind, completed)],
+    }
+
+
+@router.post("/api/ai/recipe-review")
+async def review_recipe_endpoint(request: RecipeReviewRequest) -> dict:
+    with SessionLocal() as db:
+        try:
+            context = build_recipe_context(db, request.profile_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+
+    try:
+        answer = await review_recipe(
+            context,
+            request.question,
+            [message.model_dump() for message in request.history],
+        )
+    except APIConnectionError as error:
+        logger.warning("LLM unavailable at %s: %s", LLM_MODEL, error)
+        raise HTTPException(503, "LLM is unavailable") from error
+    except OpenAIError as error:
+        logger.exception("LLM request failed for model %s", LLM_MODEL)
+        raise HTTPException(502, "LLM request failed") from error
+
+    return {
+        "answer": answer,
+        "model": LLM_MODEL,
+        "question": request.question or RECIPE_REVIEW_DEFAULT_QUESTION,
     }

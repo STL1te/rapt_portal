@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { deleteProfile, getProfile, getSystemJob, uploadProfile } from '@/api'
+import { deleteProfile, getProfile, getSystemJob, recipeAssistant, uploadProfile } from '@/api'
+import AiAssistant from '@/components/AiAssistant'
 import MetricCard from '@/components/MetricCard'
 import type { ControlType, EndType, ProfileStep, SystemJob } from '@/types'
 import { stepLen, temp } from '@/lib/fmt'
@@ -62,6 +63,7 @@ export default function RecipeDetail() {
   const location = useLocation()
   const [portalToken, setPortalToken] = useState('')
   const [busy, setBusy] = useState<'upload' | 'delete' | null>(null)
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   // seeded true when we land here after a new draft got the server's GUID
   const [uploaded, setUploaded] = useState(
@@ -148,6 +150,16 @@ export default function RecipeDetail() {
           </span>
         </div>
       </div>
+
+      <button type="button" className="assistant-button" onClick={() => setAssistantOpen(true)}>
+        <i className="fa-solid fa-wand-magic-sparkles" /> AI-проверка
+      </button>
+      <AiAssistant
+        key={data.id}
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        {...recipeAssistant(data.id)}
+      />
 
       <div className="recipe-actions">
         <button type="button" onClick={() => navigate(`/recipes/${data.id}/edit`)}>
