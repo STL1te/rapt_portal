@@ -1,12 +1,51 @@
-import { type Dispatch, type DragEvent, type SetStateAction, useEffect, useState } from 'react'
+import { type DragEvent, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
-import { ALERT_TRIGGERS, CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
-import type { ProfileAlert, ProfileInput, ProfileStep, ProfileStepAlert } from '@/types'
+import { CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
+import type {
+  AlertTrigger,
+  ControlType,
+  DurationType,
+  EndType,
+  ProfileAlert,
+  ProfileInput,
+  ProfileStep,
+  ProfileStepAlert,
+} from '@/types'
 import { useTitle } from '@/hooks/useTitle'
 
 const numOr = (v: string): number | null => (v.trim() === '' ? null : Number(v))
+
+// RAPT gates the form per profile type (rules live client-side only). We key off
+// the type name from /api/profile-types. Fermentation & General Temp Control behave
+// the same ('temp'); Pill has no steps, only profile alerts.
+type ProfileKind = 'brewzilla' | 'temp' | 'pill'
+const kindOf = (name?: string | null): ProfileKind =>
+  name === 'Pill Hydrometer' ? 'pill' : name === 'BrewZilla' ? 'brewzilla' : 'temp'
+// BrewZilla drops FreeRise; other step-based types keep all three
+const controlOptionsFor = (kind: ProfileKind): readonly ControlType[] =>
+  kind === 'brewzilla' ? (['Target', 'Ramp'] as const) : CONTROL_TYPES
+// RAPT's per-type default sensor differential (°C)
+const sensorDefaultFor = (kind: ProfileKind): number => (kind === 'brewzilla' ? 2 : 5)
+
+// BrewZilla has no gravity sensor — drop gravity-based options everywhere it appears
+const dropGravity = <T extends string>(xs: readonly T[]): readonly T[] =>
+  xs.filter((x) => x !== 'Gravity' && x !== 'GravityVelocity')
+const endTypesFor = (kind: ProfileKind): readonly EndType[] =>
+  kind === 'brewzilla' ? (dropGravity(END_TYPES) as EndType[]) : END_TYPES
+const durationTypesFor = (kind: ProfileKind): readonly DurationType[] =>
+  kind === 'brewzilla' ? (dropGravity(DURATION_TYPES) as DurationType[]) : DURATION_TYPES
+// Alert triggers per type: BrewZilla step alerts can't use gravity; Pill / profile-level
+// alerts drop the step-boundary triggers (mirrors RAPT's T(profileType, isStepAlert)).
+// Note: RAPT's profile-level list also has 'Duration', but our ProfileAlert has no
+// length field to store it, so we omit it to avoid an unsavable alert.
+const alertTriggersFor = (kind: ProfileKind, isStep: boolean): readonly AlertTrigger[] =>
+  kind !== 'pill' && isStep
+    ? kind === 'brewzilla'
+      ? (['StepStart', 'StepEnd', 'Duration', 'Temperature'] as const)
+      : (['StepStart', 'StepEnd', 'Duration', 'Temperature', 'Gravity', 'GravityVelocity'] as const)
+    : (['Temperature', 'Gravity', 'GravityVelocity'] as const)
 
 // option labels mirroring RAPT's step editor (Russian to match the app)
 const CONTROL_LABEL: Record<string, string> = {
@@ -37,17 +76,63 @@ const TRIGGER_LABEL: Record<string, string> = {
   Gravity: 'достигнута заданная плотность',
   GravityVelocity: 'скорость изменения плотности выше/ниже заданной',
 }
-// step-header icons, mirroring RAPT's collapsed step title (see RecipeDetail)
-const CONTROL_ICON: Record<string, string> = { Target: 'fa-bullseye', Ramp: 'fa-chart-line' }
-const END_ICON: Record<string, string> = {
-  Temperature: 'fa-thermometer-half',
-  Duration: 'fa-clock',
-  Manual: 'fa-hand-point-up',
-  Gravity: 'fa-droplet',
-  GravityVelocity: 'fa-droplet',
+// short labels for the collapsed step summary (RAPT shows "Target · 18°C · Manual")
+const CONTROL_SHORT: Record<string, string> = {
+  Target: 'Целевая температура',
+  Ramp: 'Разгон',
+  FreeRise: 'Свободный подъём',
+}
+const END_SHORT: Record<string, string> = {
+  Duration: 'по таймеру',
+  Temperature: 'по температуре',
+  Gravity: 'по плотности',
+  GravityVelocity: 'по скорости плотности',
+  Manual: 'вручную',
 }
 // RAPT's Heating % dropdown: Manual Control (→ null) or 100..5 step 5
 const HEATING_OPTIONS = Array.from({ length: 20 }, (_, i) => 100 - i * 5)
+
+// step duration (stored in seconds) is entered in a chosen unit (RAPT: min/hr/day)
+const DUR_UNIT_SEC = { minutes: 60, hours: 3600, days: 86400 } as const
+type DurUnit = keyof typeof DUR_UNIT_SEC
+const DUR_UNIT_LABEL: Record<DurUnit, string> = { minutes: 'мин', hours: 'ч', days: 'дн' }
+const deriveDurUnit = (sec: number | null): DurUnit =>
+  sec == null || sec === 0
+    ? 'hours'
+    : sec % 86400 === 0
+      ? 'days'
+      : sec % 3600 === 0
+        ? 'hours'
+        : 'minutes'
+// RAPT shows the step timer / duration fields only for these shapes
+const showsDuration = (s: Pick<ProfileStep, 'controlType' | 'endType'>): boolean =>
+  s.controlType === 'Ramp' || s.endType === 'Duration'
+
+// step field validation mirroring RAPT's M(e) — returns the first problem or null
+const stepProblem = (s: ProfileStep): string | null => {
+  if ((s.name ?? '').trim() === '') return 'нет названия'
+  if (s.controlType === 'FreeRise') {
+    if (s.minTemperature == null) return 'нет мин. температуры'
+    if (s.maxTemperature == null) return 'нет макс. температуры'
+    if (s.minTemperature > s.maxTemperature) return 'макс. < мин.'
+  } else if (s.temperature == null) {
+    return 'нет целевой температуры'
+  }
+  if (showsDuration(s) && s.length == null) return 'нет длительности'
+  if (s.endType === 'Gravity' && s.gravity == null) return 'нет плотности'
+  if (s.endType === 'GravityVelocity' && s.gravity == null) return 'нет скорости плотности'
+  return null
+}
+
+// alert field validation mirroring RAPT's w(e) — used for Pill profile alerts
+const alertProblem = (a: ProfileAlert): string | null => {
+  if ((a.alertText ?? '').trim() === '') return 'нет текста'
+  if (a.trigger === 'Temperature' && a.temperature == null) return 'нет температуры'
+  if (a.trigger === 'Gravity' && a.gravity == null) return 'нет плотности'
+  if (a.trigger === 'GravityVelocity' && a.gravity == null) return 'нет скорости'
+  if (a.trigger === 'Duration' && (a as ProfileStepAlert).length == null) return 'нет времени'
+  return null
+}
 
 // step-alert time (stored in seconds) is entered in a chosen unit
 type TimeUnit = 'sec' | 'min' | 'hour'
@@ -88,11 +173,11 @@ function blankStep(order: number): EditStep {
   }
 }
 
-function blankAlert(): ProfileStepAlert {
+function blankAlert(trigger: AlertTrigger = 'StepStart'): ProfileStepAlert {
   return {
     id: null,
     alertText: '',
-    trigger: 'StepStart',
+    trigger,
     operator: null,
     temperature: null,
     gravity: null,
@@ -104,16 +189,20 @@ function blankAlert(): ProfileStepAlert {
 function AlertsEditor({
   alerts,
   step,
+  kind,
   stepTemperature,
   onChange,
 }: {
   alerts: ProfileAlert[]
   step: boolean
+  kind: ProfileKind
   stepTemperature?: number | null
   onChange: (next: ProfileAlert[]) => void
 }) {
   const patch = (i: number, p: Partial<ProfileStepAlert>) =>
     onChange(alerts.map((a, idx) => (idx === i ? { ...a, ...p } : a)))
+  // triggers available for this profile type / alert scope (BrewZilla has no gravity)
+  const triggers = alertTriggersFor(kind, step)
   // chosen display unit per alert index (falls back to a unit derived from the value)
   const [units, setUnits] = useState<Record<number, TimeUnit>>({})
   return (
@@ -133,7 +222,7 @@ function AlertsEditor({
                 patch(i, p)
               }}
             >
-              {ALERT_TRIGGERS.map((t) => (
+              {triggers.map((t) => (
                 <option key={t} value={t}>
                   {TRIGGER_LABEL[t] ?? t}
                 </option>
@@ -147,6 +236,29 @@ function AlertsEditor({
                 type="number"
                 value={a.temperature ?? ''}
                 onChange={(e) => patch(i, { temperature: numOr(e.target.value) })}
+              />
+            </label>
+          ) : null}
+          {a.trigger === 'GravityVelocity' ? (
+            <label className="field">
+              <span>Условие</span>
+              <select
+                value={a.operator ?? 'LessThan'}
+                onChange={(e) => patch(i, { operator: e.target.value as ProfileAlert['operator'] })}
+              >
+                <option value="LessThan">меньше</option>
+                <option value="GreaterThan">больше</option>
+              </select>
+            </label>
+          ) : null}
+          {a.trigger === 'Gravity' || a.trigger === 'GravityVelocity' ? (
+            <label className="field">
+              <span>{a.trigger === 'Gravity' ? 'Плотность (SG)' : 'Скорость (пункты/день)'}</span>
+              <input
+                type="number"
+                step={a.trigger === 'Gravity' ? '0.001' : undefined}
+                value={a.gravity ?? ''}
+                onChange={(e) => patch(i, { gravity: numOr(e.target.value) })}
               />
             </label>
           ) : null}
@@ -203,9 +315,283 @@ function AlertsEditor({
           </button>
         </div>
       ))}
-      <button type="button" className="link-btn" onClick={() => onChange([...alerts, blankAlert()])}>
+      <button
+        type="button"
+        className="link-btn"
+        onClick={() => onChange([...alerts, blankAlert(triggers[0])])}
+      >
         <i className="fa-solid fa-plus" /> алерт
       </button>
+    </div>
+  )
+}
+
+// Step edit dialog — RAPT opens the step form in a modal instead of expanding inline.
+function StepModal({
+  draft,
+  index,
+  kind,
+  onChange,
+  onSave,
+  onClose,
+}: {
+  draft: EditStep
+  index: number
+  kind: ProfileKind
+  onChange: (p: Partial<ProfileStep>) => void
+  onSave: () => void
+  onClose: () => void
+}) {
+  const controlOptions = controlOptionsFor(kind)
+  const isFreeRise = draft.controlType === 'FreeRise'
+  // RAPT flags boil risk on BrewZilla when target ≥ 110 °C (not for FreeRise)
+  const boilWarn =
+    kind === 'brewzilla' && !isFreeRise && draft.temperature != null && draft.temperature >= 110
+  const [durUnit, setDurUnit] = useState<DurUnit>(deriveDurUnit(draft.length))
+  // Esc closes the dialog (ponytail: no full focus-trap; add if a11y audit needs it)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="modal-layer">
+      <button type="button" className="modal-backdrop" aria-label="Закрыть" onClick={onClose} />
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Редактирование шага">
+        <div className="modal-head">
+          <h3>Шаг {index + 1}</h3>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <label className="field">
+            <span>Название шага</span>
+            <input
+              type="text"
+              minLength={4}
+              maxLength={50}
+              placeholder="Название шага"
+              value={draft.name ?? ''}
+              onChange={(e) => onChange({ name: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Тип шага</span>
+            <select
+              value={draft.controlType ?? ''}
+              onChange={(e) =>
+                onChange({ controlType: (e.target.value || null) as ProfileStep['controlType'] })
+              }
+            >
+              {controlOptions.map((c) => (
+                <option key={c} value={c}>
+                  {CONTROL_LABEL[c] ?? c}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isFreeRise ? (
+            <div className="field-row">
+              <label className="field">
+                <span>Мин. температура, °C</span>
+                <input
+                  type="number"
+                  value={draft.minTemperature ?? ''}
+                  onChange={(e) => onChange({ minTemperature: numOr(e.target.value) })}
+                />
+              </label>
+              <label className="field">
+                <span>Макс. температура, °C</span>
+                <input
+                  type="number"
+                  value={draft.maxTemperature ?? ''}
+                  onChange={(e) => onChange({ maxTemperature: numOr(e.target.value) })}
+                />
+              </label>
+            </div>
+          ) : (
+            <label className="field">
+              <span>Целевая температура, °C</span>
+              <input
+                type="number"
+                value={draft.temperature ?? ''}
+                onChange={(e) => onChange({ temperature: numOr(e.target.value) })}
+              />
+              {boilWarn ? (
+                <span className="warn-note">
+                  <i className="fa-solid fa-triangle-exclamation" /> ≥ 110 °C — кипение
+                </span>
+              ) : null}
+            </label>
+          )}
+          <label className="field">
+            <span>Переход к следующему шагу</span>
+            <select
+              value={draft.endType ?? ''}
+              onChange={(e) =>
+                onChange({ endType: (e.target.value || null) as ProfileStep['endType'] })
+              }
+            >
+              {endTypesFor(kind).map((c) => (
+                <option key={c} value={c}>
+                  {END_LABEL[c] ?? c}
+                </option>
+              ))}
+            </select>
+          </label>
+          {draft.endType === 'Gravity' ? (
+            <label className="field">
+              <span>Целевая плотность (SG)</span>
+              <input
+                type="number"
+                step="0.001"
+                value={draft.gravity ?? ''}
+                onChange={(e) => onChange({ gravity: numOr(e.target.value) })}
+              />
+            </label>
+          ) : null}
+          {draft.endType === 'GravityVelocity' ? (
+            <div className="field-row">
+              <label className="field">
+                <span>Условие</span>
+                <select
+                  value={draft.operator ?? 'LessThan'}
+                  onChange={(e) =>
+                    onChange({ operator: e.target.value as ProfileStep['operator'] })
+                  }
+                >
+                  <option value="LessThan">меньше</option>
+                  <option value="GreaterThan">больше</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Скорость (пункты/день)</span>
+                <input
+                  type="number"
+                  value={draft.gravity ?? ''}
+                  onChange={(e) => onChange({ gravity: numOr(e.target.value) })}
+                />
+              </label>
+            </div>
+          ) : null}
+          {draft.endType === 'Duration' ? (
+            <label className="field">
+              <span>Запуск таймера шага</span>
+              <select
+                value={draft.durationType ?? ''}
+                onChange={(e) =>
+                  onChange({ durationType: (e.target.value || null) as ProfileStep['durationType'] })
+                }
+              >
+                {durationTypesFor(kind).map((c) => (
+                  <option key={c} value={c}>
+                    {DURATION_LABEL[c] ?? c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {showsDuration(draft) ? (
+            <label className="field">
+              <span>{draft.controlType === 'Ramp' ? 'Длительность разгона' : 'Длительность шага'}</span>
+              <div className="time-input">
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.length == null ? '' : draft.length / DUR_UNIT_SEC[durUnit]}
+                  onChange={(e) =>
+                    onChange({
+                      length:
+                        e.target.value.trim() === ''
+                          ? null
+                          : Math.round(Number(e.target.value) * DUR_UNIT_SEC[durUnit]),
+                    })
+                  }
+                />
+                <select value={durUnit} onChange={(e) => setDurUnit(e.target.value as DurUnit)}>
+                  {(['minutes', 'hours', 'days'] as const).map((u) => (
+                    <option key={u} value={u}>
+                      {DUR_UNIT_LABEL[u]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+          ) : null}
+
+          <details className="fine-tuning">
+            <summary>Тонкая настройка</summary>
+            <div>
+              <label className="field">
+                <span>Нагрев, %</span>
+                <select
+                  value={draft.heatingUtilisation == null ? 'manual' : String(draft.heatingUtilisation)}
+                  onChange={(e) =>
+                    onChange({
+                      heatingUtilisation: e.target.value === 'manual' ? null : Number(e.target.value),
+                    })
+                  }
+                >
+                  <option value="manual">Ручное управление</option>
+                  {HEATING_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>PID</span>
+                <select
+                  value={draft.pidEnabled == null ? 'manual' : draft.pidEnabled ? 'on' : 'off'}
+                  onChange={(e) =>
+                    onChange({
+                      pidEnabled: e.target.value === 'manual' ? null : e.target.value === 'on',
+                    })
+                  }
+                >
+                  <option value="manual">Ручное управление</option>
+                  <option value="on">Вкл</option>
+                  <option value="off">Выкл</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Допустимый разброс температуры, °C</span>
+                <input
+                  type="number"
+                  value={draft.sensorDifferential ?? ''}
+                  onChange={(e) => onChange({ sensorDifferential: numOr(e.target.value) })}
+                />
+              </label>
+            </div>
+          </details>
+
+          <div className="step-alerts-editor">
+            <span className="muted">Алерты шага</span>
+            <AlertsEditor
+              alerts={draft.alerts}
+              step
+              kind={kind}
+              stepTemperature={draft.temperature}
+              onChange={(next) => onChange({ alerts: next as ProfileStepAlert[] })}
+            />
+          </div>
+        </div>
+
+        <div className="modal-foot">
+          <button type="button" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="button" className="btn-solid" onClick={onSave}>
+            Сохранить шаг
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -230,14 +616,16 @@ export default function RecipeEditor() {
   const [typeId, setTypeId] = useState('')
   const [steps, setSteps] = useState<EditStep[]>([])
   const [alerts, setAlerts] = useState<ProfileAlert[]>([])
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [advanced, setAdvanced] = useState<Set<string>>(new Set())
+  const [editing, setEditing] = useState<{ uid: string; draft: EditStep } | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [over, setOver] = useState<{ i: number; pos: 'before' | 'after' } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const markDirty = () => setDirty(true)
+
+  // selected profile type drives the whole form shape (steps vs Pill alerts, etc.)
+  const kind = kindOf(types?.find((t) => t.id === typeId)?.name)
 
   // warn on browser close/reload while there are unsaved edits
   useEffect(() => {
@@ -281,19 +669,24 @@ export default function RecipeEditor() {
 
   const reindex = (s: EditStep[]) => s.map((st, idx) => ({ ...st, order: idx }))
 
-  const patchStep = (i: number, p: Partial<ProfileStep>) =>
-    setSteps((s) => s.map((st, idx) => (idx === i ? { ...st, ...p } : st)))
+  // open a step in the modal, editing a draft copy so Отмена discards changes
+  const openStep = (st: EditStep) =>
+    setEditing({ uid: st._uid, draft: { ...st, alerts: st.alerts.map((a) => ({ ...a })) } })
+  const patchDraft = (p: Partial<ProfileStep>) =>
+    setEditing((e) => (e ? { ...e, draft: { ...e.draft, ...p } } : e))
+  const saveStep = () => {
+    if (!editing) return
+    markDirty()
+    setSteps((s) => s.map((st) => (st._uid === editing.uid ? { ...editing.draft } : st)))
+    setEditing(null)
+  }
 
-  const toggleIn =
-    (setter: Dispatch<SetStateAction<Set<string>>>) => (key: string) =>
-      setter((c) => {
-        const next = new Set(c)
-        if (next.has(key)) next.delete(key)
-        else next.add(key)
-        return next
-      })
-  const toggleCollapsed = toggleIn(setCollapsed)
-  const toggleAdvanced = toggleIn(setAdvanced)
+  const addStep = () => {
+    markDirty()
+    const st = { ...blankStep(steps.length), sensorDifferential: sensorDefaultFor(kind) }
+    setSteps((s) => [...s, st])
+    openStep(st) // RAPT opens the editor immediately for a fresh step
+  }
 
   // drag-and-drop reorder (native HTML5; arrows below stay for touch/mobile)
   const onStepDragStart = (e: DragEvent, i: number) => {
@@ -356,8 +749,9 @@ export default function RecipeEditor() {
       public: isPublic,
       profile_type_id: typeId,
       profile_type_name: types?.find((t) => t.id === typeId)?.name ?? null,
+      // Pill profiles have no steps — only profile-level alerts
       // _uid is a local-only key; backend StepIn ignores it and _pick drops it
-      steps: steps.map((st, i) => ({ ...st, order: i })),
+      steps: kind === 'pill' ? [] : steps.map((st, i) => ({ ...st, order: i })),
       alerts,
     }
     setSaving(true)
@@ -373,6 +767,19 @@ export default function RecipeEditor() {
     }
   }
 
+  // reasons saving is blocked — shown proactively next to the button (RAPT-style)
+  const issues: string[] = []
+  if (name.trim().length < 4) issues.push('название рецепта — минимум 4 символа')
+  if (!typeId) issues.push('не выбран тип профиля')
+  if (kind === 'pill') {
+    if (alerts.length === 0) issues.push('добавьте хотя бы один алерт')
+    else if (alerts.some(alertProblem)) issues.push('заполните поля алертов')
+  } else if (steps.length === 0) {
+    issues.push('добавьте хотя бы один шаг')
+  } else if (steps.some(stepProblem)) {
+    issues.push('заполните поля шагов')
+  }
+
   return (
     <div onChange={markDirty}>
       <a className="back" onClick={leave}>
@@ -380,10 +787,36 @@ export default function RecipeEditor() {
       </a>
 
       <div className="page-head">
-        <h2>{isEdit ? 'Редактирование рецепта' : 'Новый рецепт'}</h2>
+        <div>
+          <h2>{isEdit ? 'Редактирование рецепта' : 'Новый рецепт'}</h2>
+          <p className="editor-subtitle">
+            Пошаговый профиль управления температурой для брожения.
+          </p>
+        </div>
       </div>
 
+      <section className="panel">
+        <h3 className="panel-title">Тип профиля</h3>
+        <div className="pill-group">
+          {types?.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={typeId === t.id}
+              className={`pill${typeId === t.id ? ' active' : ''}`}
+              onClick={() => {
+                markDirty()
+                setTypeId(t.id)
+              }}
+            >
+              {t.name ?? t.id}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="panel recipe-form">
+        <h3 className="panel-title">Основные данные</h3>
         <label className="field">
           <span>Название</span>
           <input
@@ -398,103 +831,113 @@ export default function RecipeEditor() {
           <span>Описание</span>
           <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
-        <div className="field-row">
-          <label className="field">
-            <span>Тип профиля</span>
-            <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
-              {types?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name ?? t.id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="field">
-            <span>Доступ</span>
-            <label className="sync-checkbox">
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setPublic(e.target.checked)}
-              />
-              <span>Публичный</span>
-            </label>
+        <div className="switch-row">
+          <div>
+            <div className="switch-label">Публичный профиль</div>
+            <div className="switch-desc">
+              Другие пользователи смогут просматривать и копировать рецепт.
+            </div>
           </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isPublic}
+            aria-label="Публичный профиль"
+            className={`switch${isPublic ? ' on' : ''}`}
+            onClick={() => {
+              markDirty()
+              setPublic((v) => !v)
+            }}
+          />
         </div>
       </section>
 
+      {kind === 'pill' ? (
+        <section className="panel">
+          <h3 className="panel-title">Алерты Pill</h3>
+          <p className="pill-note">
+            Профиль Pill отслеживает показания и шлёт оповещения — шагов у него нет.
+          </p>
+          <AlertsEditor
+            alerts={alerts}
+            step={false}
+            kind={kind}
+            onChange={(next) => {
+              markDirty()
+              setAlerts(next)
+            }}
+          />
+        </section>
+      ) : (
       <section className="panel">
         <div className="steps-head">
           <h3 className="panel-title">Шаги</h3>
-          <button
-            type="button"
-            onClick={() => {
-              markDirty()
-              setSteps((s) => [...s, blankStep(s.length)])
-            }}
-          >
+          <button type="button" onClick={addStep}>
             <i className="fa-solid fa-plus" /> Шаг
           </button>
         </div>
 
-        {steps.map((st, i) => {
-          const isCollapsed = collapsed.has(st._uid)
-          const isAdvanced = advanced.has(st._uid)
-          return (
+        {steps.map((st, i) => (
           <div
             key={st._uid}
-            className={`step-editor${dragIdx === i ? ' dragging' : ''}${
+            className={`step-editor step-row${dragIdx === i ? ' dragging' : ''}${
               over && over.i === i && dragIdx !== i ? ` drop-${over.pos}` : ''
             }`}
             onDragOver={(e) => onStepDragOver(e, i)}
             onDrop={onStepDrop}
           >
-            <div className="step-editor-head">
+            <i
+              className="handle fa-solid fa-grip-vertical"
+              title="Перетащить"
+              draggable
+              onDragStart={(e) => onStepDragStart(e, i)}
+              onDragEnd={endDrag}
+            />
+            <span className="step-num">{i + 1}</span>
+            <button type="button" className="step-row-main" onClick={() => openStep(st)}>
+              <span className="name">{st.name?.trim() || `Шаг ${i + 1}`}</span>
+              <span className="step-summary-meta">
+                {st.controlType ? (
+                  <span className="badge active">
+                    {CONTROL_SHORT[st.controlType] ?? st.controlType}
+                  </span>
+                ) : null}
+                {st.temperature != null ? <span>{st.temperature}°C</span> : null}
+                {st.endType ? <span>· {END_SHORT[st.endType] ?? st.endType}</span> : null}
+              </span>
+            </button>
+            {stepProblem(st) ? (
               <i
-                className="handle fa-solid fa-grip-vertical"
-                title="Перетащить"
-                draggable
-                onDragStart={(e) => onStepDragStart(e, i)}
-                onDragEnd={endDrag}
+                className="fa-solid fa-triangle-exclamation step-warn"
+                title={stepProblem(st) ?? undefined}
               />
+            ) : null}
+            <div className="step-row-actions">
               <button
                 type="button"
                 className="icon-btn"
-                title={isCollapsed ? 'Развернуть' : 'Свернуть'}
-                onClick={() => toggleCollapsed(st._uid)}
+                title="Вверх"
+                disabled={i === 0}
+                onClick={() => moveStep(i, -1)}
               >
-                <i className={`fa-solid ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`} />
-              </button>
-              <span className="step-num">{i + 1}</span>
-              <input
-                type="text"
-                className="step-name"
-                placeholder="Название шага"
-                minLength={4}
-                maxLength={50}
-                value={st.name ?? ''}
-                onChange={(e) => patchStep(i, { name: e.target.value })}
-              />
-              {st.controlType && CONTROL_ICON[st.controlType] ? (
-                <i className={`fa-solid ${CONTROL_ICON[st.controlType]} step-icon`} title={st.controlType} />
-              ) : null}
-              {st.endType && END_ICON[st.endType] ? (
-                <i className={`fa-solid ${END_ICON[st.endType]} step-icon`} title={st.endType} />
-              ) : null}
-              <button type="button" className="icon-btn" disabled={i === 0} onClick={() => moveStep(i, -1)}>
                 <i className="fa-solid fa-arrow-up" />
               </button>
               <button
                 type="button"
                 className="icon-btn"
+                title="Вниз"
                 disabled={i === steps.length - 1}
                 onClick={() => moveStep(i, 1)}
               >
                 <i className="fa-solid fa-arrow-down" />
               </button>
+              <button type="button" className="icon-btn" title="Редактировать" onClick={() => openStep(st)}>
+                <i className="fa-solid fa-pen" />
+              </button>
               <button
                 type="button"
                 className="icon-btn"
+                title="Удалить"
                 onClick={() => {
                   markDirty()
                   setSteps((s) => reindex(s.filter((_, idx) => idx !== i)))
@@ -503,152 +946,53 @@ export default function RecipeEditor() {
                 <i className="fa-solid fa-trash" />
               </button>
             </div>
-
-            {isCollapsed ? null : (
-            <>
-            <div className="step-editor-fields">
-              <label className="field field-wide">
-                <span>Тип шага</span>
-                <select
-                  value={st.controlType ?? ''}
-                  onChange={(e) => patchStep(i, { controlType: (e.target.value || null) as ProfileStep['controlType'] })}
-                >
-                  {CONTROL_TYPES.map((c) => (
-                    <option key={c} value={c}>
-                      {CONTROL_LABEL[c] ?? c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field field-narrow">
-                <span>Целевая температура, °C</span>
-                <input
-                  type="number"
-                  value={st.temperature ?? ''}
-                  onChange={(e) => patchStep(i, { temperature: numOr(e.target.value) })}
-                />
-              </label>
-              <label className="field field-256">
-                <span>Переход к следующему шагу</span>
-                <select
-                  value={st.endType ?? ''}
-                  onChange={(e) => patchStep(i, { endType: (e.target.value || null) as ProfileStep['endType'] })}
-                >
-                  {END_TYPES.map((c) => (
-                    <option key={c} value={c}>
-                      {END_LABEL[c] ?? c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field field-256">
-                <span>Запуск таймера шага</span>
-                <select
-                  value={st.durationType ?? ''}
-                  onChange={(e) => patchStep(i, { durationType: (e.target.value || null) as ProfileStep['durationType'] })}
-                >
-                  {DURATION_TYPES.map((c) => (
-                    <option key={c} value={c}>
-                      {DURATION_LABEL[c] ?? c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field field-narrow">
-                <span>Длительность, мин</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={st.length == null ? '' : st.length / 60}
-                  onChange={(e) =>
-                    patchStep(i, {
-                      length: e.target.value.trim() === '' ? null : Math.round(Number(e.target.value) * 60),
-                    })
-                  }
-                />
-              </label>
-            </div>
-
-            <label className="sync-checkbox adv-toggle">
-              <input type="checkbox" checked={isAdvanced} onChange={() => toggleAdvanced(st._uid)} />
-              <span>Показать доп. параметры</span>
-            </label>
-
-            {isAdvanced ? (
-              <div className="step-editor-fields">
-                <label className="field field-256">
-                  <span>Нагрев, %</span>
-                  <select
-                    value={st.heatingUtilisation == null ? 'manual' : String(st.heatingUtilisation)}
-                    onChange={(e) =>
-                      patchStep(i, {
-                        heatingUtilisation: e.target.value === 'manual' ? null : Number(e.target.value),
-                      })
-                    }
-                  >
-                    <option value="manual">Ручное управление</option>
-                    {HEATING_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n}%
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field field-256">
-                  <span>PID</span>
-                  <select
-                    value={st.pidEnabled == null ? 'manual' : st.pidEnabled ? 'on' : 'off'}
-                    onChange={(e) =>
-                      patchStep(i, {
-                        pidEnabled: e.target.value === 'manual' ? null : e.target.value === 'on',
-                      })
-                    }
-                  >
-                    <option value="manual">Ручное управление</option>
-                    <option value="on">Вкл</option>
-                    <option value="off">Выкл</option>
-                  </select>
-                </label>
-                <label className="field field-narrow">
-                  <span>Допустимый разброс температуры, °C</span>
-                  <input
-                    type="number"
-                    value={st.sensorDifferential ?? ''}
-                    onChange={(e) => patchStep(i, { sensorDifferential: numOr(e.target.value) })}
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            <div className="step-alerts-editor">
-              <span className="muted">Алерты шага</span>
-              <AlertsEditor
-                alerts={st.alerts}
-                step
-                stepTemperature={st.temperature}
-                onChange={(next) => {
-                  markDirty()
-                  patchStep(i, { alerts: next as ProfileStepAlert[] })
-                }}
-              />
-            </div>
-            </>
-            )}
           </div>
-          )
-        })}
-        {steps.length === 0 ? <p className="muted">Шагов пока нет.</p> : null}
+        ))}
+        {steps.length === 0 ? (
+          <button type="button" className="empty-steps" onClick={addStep}>
+            <i className="fa-solid fa-plus" />
+            <span className="empty-steps-title">Добавьте первый шаг</span>
+            <span className="empty-steps-desc">
+              Шаги задают температуру и условие перехода по ходу брожения.
+            </span>
+          </button>
+        ) : null}
       </section>
+      )}
 
-      {error ? <p className="error">{error}</p> : null}
+      {editing ? (
+        <StepModal
+          draft={editing.draft}
+          index={steps.findIndex((s) => s._uid === editing.uid)}
+          kind={kind}
+          onChange={patchDraft}
+          onSave={saveStep}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
 
-      <div className="pagination-actions">
-        <button type="button" disabled={saving} onClick={() => void save()}>
-          {saving ? 'Сохранение…' : 'Сохранить черновик'}
-        </button>
-        <button type="button" onClick={leave}>
-          Отмена
-        </button>
+      <div className="editor-actions">
+        {issues.length > 0 ? (
+          <div className="info-banner">
+            <i className="fa-solid fa-circle-info" />
+            Сохранение недоступно: {issues.join('; ')}.
+          </div>
+        ) : error ? (
+          <p className="error">{error}</p>
+        ) : null}
+        <div className="editor-actions-row">
+          <button
+            type="button"
+            className="btn-solid"
+            disabled={saving || issues.length > 0}
+            onClick={() => void save()}
+          >
+            {saving ? 'Сохранение…' : 'Сохранить черновик'}
+          </button>
+          <button type="button" onClick={leave}>
+            Отмена
+          </button>
+        </div>
       </div>
     </div>
   )
