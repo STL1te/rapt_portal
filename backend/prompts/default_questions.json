@@ -1,0 +1,28 @@
+{
+  "en": {
+    "brew": {
+      "active": "How is the brew going?",
+      "done": "How did the brew go?"
+    },
+    "fermentation": {
+      "active": "How is fermentation going?",
+      "done": "How did fermentation go?"
+    },
+    "recipe": {
+      "default": "Is this recipe okay?"
+    }
+  },
+  "ru": {
+    "brew": {
+      "active": "Как идёт варка?",
+      "done": "Как прошла варка?"
+    },
+    "fermentation": {
+      "active": "Как идёт брожение?",
+      "done": "Как прошло брожение?"
+    },
+    "recipe": {
+      "default": "Проверь рецепт, всё ли с ним ок?"
+    }
+  }
+}

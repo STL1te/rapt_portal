@@ -61,7 +61,7 @@ _MAX_TOOL_ROUNDS = 4
 _MAX_LISTED_SESSIONS = 30
 _RECENT_MESSAGES = 12
 _SUMMARY_TRIGGER_MESSAGES = 24
-_PROMPT_VERSION = "v1"
+_PROMPT_VERSION = "v2"
 _PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 
@@ -73,16 +73,11 @@ FERMENTATION_SYSTEM_PROMPT = _load_prompt("fermentation.md")
 BREW_SYSTEM_PROMPT = _load_prompt("brew.md")
 RECIPE_REVIEW_SYSTEM_PROMPT = _load_prompt("recipe_review.md")
 RECIPE_REVIEW_DEFAULT = _load_prompt("recipe_review_default.md")
-RECIPE_REVIEW_DEFAULT_QUESTION = "Проверь рецепт, всё ли с ним ок?"
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
 CONVERSATION_SUMMARY_PROMPT = _load_prompt("conversation_summary.md")
-
-DEFAULT_QUESTIONS: dict[tuple[AssessmentKind, bool], str] = {
-    ("fermentation", False): "Как идёт брожение?",
-    ("fermentation", True): "Как прошло брожение?",
-    ("brew", False): "Как идёт варка?",
-    ("brew", True): "Как прошла варка?",
-}
+DEFAULT_QUESTIONS: dict[str, dict[str, dict[str, str]]] = json.loads(
+    _load_prompt("default_questions.json")
+)
 
 DEFAULT_INSTRUCTIONS: dict[tuple[AssessmentKind, bool], str] = {
     ("fermentation", False): _load_prompt("fermentation_default_active.md"),
@@ -92,8 +87,8 @@ DEFAULT_INSTRUCTIONS: dict[tuple[AssessmentKind, bool], str] = {
 }
 
 _FOLLOW_UP_SYSTEM_HINT = (
-    "Если это не первый ход беседы, отвечай коротко и по существу, не повторяй "
-    "полный разбор без явной просьбы. Отвечай только на русском языке."
+    "For later conversation turns, answer briefly and directly without repeating the full "
+    "assessment unless explicitly asked. Reply in the language of the user's latest message."
 )
 
 _BREWZILLA_CONTROL_TYPES = ("Target", "Ramp")
@@ -242,7 +237,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_brew_sessions",
-            "description": "Список сохранённых локально сессий варки (последние по дате, до 30).",
+            "description": "List locally saved brew sessions, newest first, up to 30.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -250,7 +245,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_fermentation_sessions",
-            "description": "Список сохранённых локально сессий брожения (последние по дате, до 30).",
+            "description": "List locally saved fermentation sessions, newest first, up to 30.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -258,13 +253,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_sessions",
-            "description": "Найти прошлые сессии того же типа по названию.",
+            "description": "Find past sessions of the same type by name.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Характерное слово или фраза из названия сессии.",
+                        "description": "A distinctive word or phrase from the session name.",
                     },
                     "kind": {"type": "string", "enum": ["brew", "fermentation"]},
                 },
@@ -277,13 +272,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_session_context",
-            "description": "Загрузить полный локальный контекст и телеметрию одной сессии, найденной через search_sessions.",
+            "description": "Load full local context and telemetry for a session found via search_sessions.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "ID, возвращённый инструментом списка или поиска.",
+                        "description": "ID returned by a list or search tool.",
                     },
                     "kind": {"type": "string", "enum": ["brew", "fermentation"]},
                 },
@@ -308,6 +303,14 @@ class SubjectSettings:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _localized_default_question(subject_type: SubjectType, completed: bool, locale: str) -> str:
+    language = locale.lower().split("-", 1)[0]
+    questions = DEFAULT_QUESTIONS.get(language, DEFAULT_QUESTIONS["en"])
+    subject = subject_type.removesuffix("_session")
+    state = "default" if subject == "recipe" else ("done" if completed else "active")
+    return questions[subject][state]
 
 
 def _message_dict(message: AiMessage) -> dict:
@@ -447,14 +450,16 @@ def _subject_exists(db, subject_type: SubjectType, subject_id: str) -> bool:
     return db.get(model, subject_id) is not None
 
 
-def _subject_settings(db, conversation: AiConversation) -> SubjectSettings:
+def _subject_settings(db, conversation: AiConversation, locale: str = "ru") -> SubjectSettings:
     if conversation.subject_type == "brew_session":
         completed = not bool(db.get(BrewSession, conversation.subject_id).active)
         return SubjectSettings(
             system_prompt=BREW_SYSTEM_PROMPT,
             context=build_context(db, "brew", conversation.subject_id, None),
             context_tag="current_session_context",
-            displayed_default_question=DEFAULT_QUESTIONS[("brew", completed)],
+            displayed_default_question=_localized_default_question(
+                conversation.subject_type, completed, locale
+            ),
             model_default_instruction=DEFAULT_INSTRUCTIONS[("brew", completed)],
             tools=TOOLS,
             current_session_id=conversation.subject_id,
@@ -465,7 +470,9 @@ def _subject_settings(db, conversation: AiConversation) -> SubjectSettings:
             system_prompt=FERMENTATION_SYSTEM_PROMPT,
             context=build_context(db, "fermentation", conversation.subject_id, None),
             context_tag="current_session_context",
-            displayed_default_question=DEFAULT_QUESTIONS[("fermentation", completed)],
+            displayed_default_question=_localized_default_question(
+                conversation.subject_type, completed, locale
+            ),
             model_default_instruction=DEFAULT_INSTRUCTIONS[("fermentation", completed)],
             tools=TOOLS,
             current_session_id=conversation.subject_id,
@@ -474,7 +481,7 @@ def _subject_settings(db, conversation: AiConversation) -> SubjectSettings:
         system_prompt=RECIPE_REVIEW_SYSTEM_PROMPT,
         context=build_recipe_context(db, conversation.subject_id),
         context_tag="recipe_context",
-        displayed_default_question=RECIPE_REVIEW_DEFAULT_QUESTION,
+        displayed_default_question=_localized_default_question("recipe", False, locale),
         model_default_instruction=RECIPE_REVIEW_DEFAULT,
         tools=None,
         current_session_id=None,
@@ -492,7 +499,11 @@ def _load_conversation_messages(db, conversation_id: str) -> list[AiMessage]:
 
 
 def _build_system_block(
-    system_prompt: str, context_tag: str, context: str, summary: str | None
+    system_prompt: str,
+    context_tag: str,
+    context: str,
+    summary: str | None,
+    response_locale: str | None = None,
 ) -> str:
     parts = [
         "[ROLE AND RULES]",
@@ -502,7 +513,7 @@ def _build_system_block(
         _utcnow().isoformat(timespec="seconds"),
         "",
         "[CURRENT SUBJECT CONTEXT]",
-        "Актуальные данные ниже имеют приоритет над числами и состояниями, упомянутыми в истории беседы.",
+        "The current data below takes priority over numbers and states mentioned in conversation history.",
         f"<{context_tag}>{context}</{context_tag}>",
         "",
         "[FOLLOW-UP RULE]",
@@ -510,6 +521,14 @@ def _build_system_block(
     ]
     if summary:
         parts.extend(["", "[CONVERSATION SUMMARY]", summary.strip()])
+    if response_locale:
+        parts.extend(
+            [
+                "",
+                "[RESPONSE LOCALE FOR AUTO-GENERATED FIRST TURN]",
+                f"Reply using browser locale {response_locale}.",
+            ]
+        )
     return "\n".join(parts)
 
 
@@ -520,11 +539,14 @@ def _build_model_messages(
     summary: str | None,
     history: Sequence[AiMessage],
     user_content: str,
+    response_locale: str | None = None,
 ) -> list[dict[str, str]]:
     return [
         {
             "role": "system",
-            "content": _build_system_block(system_prompt, context_tag, context, summary),
+            "content": _build_system_block(
+                system_prompt, context_tag, context, summary, response_locale
+            ),
         },
         *[{"role": message.role, "content": message.content} for message in history],
         {"role": "user", "content": user_content.strip()},
@@ -698,82 +720,82 @@ def _matches_step_aliases(step_name: str | None, aliases: tuple[str, ...]) -> bo
 def _repair_hint_from_error(error: Exception) -> str:
     text = str(error)
     if "profile description summary is required" in text:
-        return "Заполни description как краткое аккуратное summary рецепта на русском языке."
+        return "Fill description with a concise recipe summary in the user's language."
     if "missing required BrewZilla steps:" in text:
         return (
-            "Добавь обязательный BrewZilla-каркас: Mash In, аккуратно названные mash-паузы, "
-            "Mash Out, Sparge, Boil, Cooling."
+            "Add the required BrewZilla skeleton: Mash In, clearly named mash rests, "
+            "Mash Out, Sparge, Boil, and Cooling."
         )
     if "mash-in temperature alert is required" in text:
         return (
-            "Добавь в Mash In алерт с trigger='Temperature' на его целевую температуру "
-            "и понятным приглашением засыпать солод."
+            "Add a trigger='Temperature' alert at the Mash In target, with a clear "
+            "instruction to add grain in the user's language."
         )
     if "alert" in text and "temperature must be a finite number" in text:
         return (
-            "Для алерта с trigger='Temperature' укажи числовое поле temperature. "
-            "У Mash In оно должно совпадать с температурой самого шага."
+            "Set a numeric temperature for every trigger='Temperature' alert. "
+            "For Mash In it must equal the step temperature."
         )
     if "mash-in alert temperature must match step temperature" in text:
-        return "В Temperature-alert шага Mash In скопируй точную температуру самого Mash In."
+        return "Copy the exact Mash In step temperature into its Temperature alert."
     if "mash-in temperature must be 2-4 degrees above first rest" in text:
         return (
-            f"{text}. Установи Mash In на 2–4 °C выше первой температурной паузы "
-            "и используй то же значение в его Temperature-alert."
+            f"{text}. Set Mash In 2–4 °C above the first rest and use the same "
+            "value in its Temperature alert."
         )
     if "mash-in must wait for manual completion" in text:
         return (
-            "Mash In должен держать целевую температуру до ручного подтверждения окончания "
-            "засыпи: controlType='Target', endType='Manual', durationType='Manual', length=null."
+            "Mash In must hold its target until grain addition is manually completed: "
+            "controlType='Target', endType='Manual', durationType='Manual', length=null."
         )
     if "heating utilisation does not match profile heat power" in text:
         return (
-            f"{text}. Исправь конкретно этот шаг: heatingUtilisation должен быть равен "
-            "максимальной мощности нагрева, уже указанной в профиле. Она применяется к "
-            "Mash In, переходам нагрева и Boil; меньшая мощность — только к выдержкам."
+            f"{text}. Fix this step: heatingUtilisation must equal the maximum heating "
+            "power already present in the profile. Use it for Mash In, heat transitions, "
+            "and Boil; lower power is only for rests."
         )
     if "rest must have a separate heating step" in text:
         return (
-            "Если мощности нагрева и поддержания различаются, перед каждой паузой добавь "
-            "отдельный Target + Temperature шаг нагрева с полной мощностью, затем шаг "
-            "выдержки Target + Duration с мощностью поддержания и PID."
+            "When heating and hold power differ, add a separate full-power Target + "
+            "Temperature heat-up step before each rest, followed by a Target + Duration "
+            "hold step at rest power with PID."
         )
     if "boil must not use rest PID" in text:
-        return "PID, запрошенный для пауз, не включай на Boil; оставь мощность кипа фиксированной."
+        return "Do not enable rest PID for Boil; keep boil power fixed."
     if "alert" in text and "text is required" in text:
-        return "У каждого step-alert обязателен непустой alertText с понятным текстом действия."
+        return "Every step alert requires a clear non-empty alertText in the user's language."
     if "length must be a positive integer" in text:
         return (
-            "Для шагов с controlType='Ramp' или endType='Duration' укажи положительный length в секундах. "
-            "Для Mash In и Sparge без длительности используй Target + Manual. Для Cooling используй Target + Temperature."
+            "For controlType='Ramp' or endType='Duration', set a positive integer length "
+            "in seconds. Use Target + Manual for untimed Mash In and Sparge, and Target + "
+            "Temperature for Cooling."
         )
     if "trigger is invalid" in text:
-        return "Для BrewZilla step-alert trigger должен быть одним из: StepStart, StepEnd, Duration, Temperature."
+        return (
+            "A BrewZilla step-alert trigger must be StepStart, StepEnd, Duration, or Temperature."
+        )
     if "controlType is invalid" in text:
-        return "Для BrewZilla используй только controlType='Target' или 'Ramp'."
+        return "Use only controlType='Target' or 'Ramp' for BrewZilla."
     if "endType is invalid" in text:
-        return "Для BrewZilla используй только endType='Duration', 'Temperature' или 'Manual'."
+        return "Use only endType='Duration', 'Temperature', or 'Manual' for BrewZilla."
     if "durationType is invalid" in text:
-        return "Используй корректный durationType из разрешённого набора и не оставляй его пустым."
+        return "Use a valid non-empty durationType from the allowed set."
     if "target duration timer must start at temperature" in text:
         return (
-            "Для Target-шага с endType='Duration' ставь durationType='Temperature', "
-            "чтобы выдержка началась только после достижения целевой температуры."
+            "For a Target step with endType='Duration', set durationType='Temperature' "
+            "so the hold starts only after reaching the target."
         )
     if "mash-out temperature must be 78" in text:
-        return "Для шага Mash Out используй целевую температуру 78 °C."
+        return "Set the Mash Out target temperature to 78 °C."
     if "alert occurs after step end" in text:
-        return "Duration-alert должен срабатывать не позже окончания шага."
+        return "A Duration alert must not fire after the step ends."
     if "fixed profile fields are invalid" in text:
-        return (
-            "Установи public=false, profile_type_id=null, profile_type_name=null "
-            "и корневой alerts=[]."
-        )
+        return "Set public=false, profile_type_id=null, profile_type_name=null, and root alerts=[]."
     if "profile name length is invalid" in text:
-        return "Заполни name: от 4 до 50 символов."
+        return "Set name to 4–50 characters in the user's language."
     if "profile root must be an object" in text:
-        return "Верни один JSON-объект верхнего уровня, а не массив и не markdown."
-    return f"Исправь ответ по ошибке валидации: {text}"
+        return "Return one top-level JSON object, not an array or markdown."
+    return f"Fix the response according to this validation error: {text}"
 
 
 def _validate_generated_profile(raw: str) -> dict:
@@ -994,17 +1016,18 @@ async def generate_profile(description: str) -> dict:
             {
                 "role": "user",
                 "content": (
-                    "Исправь ответ и верни полный JSON-объект целиком. "
-                    "Используй скрытые дефолты RAPT setup, если пользователь не указал иное: "
+                    "Fix the response and return the complete JSON object. "
+                    "Preserve the language detected from the original user recipe for name, "
+                    "description, non-service step names, and alertText; required service step names "
+                    "remain English. Use hidden RAPT setup defaults unless overridden: "
                     "temperature alerts = yes, sparge = yes, mash-out = yes, whirlpool = no. "
-                    "Поле description обязательно: это аккуратное краткое summary рецепта на русском. "
-                    "Обязательный BrewZilla-каркас: Mash In, аккуратно названные mash-паузы, "
-                    "Mash Out, Sparge, Boil, Cooling. "
-                    "Для Target + Duration всегда используй durationType='Temperature'. "
-                    "Стандартные параметры: Mash Out 78 °C, Sparge 78 °C, Cooling 20 °C. "
-                    "Если в рецепте есть хмель для кипа, добавь Duration-alerts в шаг Boil. "
-                    f"Исправление: {repair_hint} "
-                    f"Ошибка валидации: {error}"
+                    "description is required and must be a concise recipe summary. "
+                    "Required skeleton: Mash In, clearly named mash rests, Mash Out, Sparge, "
+                    "Boil, Cooling. For Target + Duration always use "
+                    "durationType='Temperature'. Defaults: Mash Out 78 °C, Sparge 78 °C, "
+                    "Cooling 20 °C. Add Duration alerts to Boil for boil hop additions. "
+                    f"Repair: {repair_hint} "
+                    f"Validation error: {error}"
                 ),
             },
         ]
@@ -1104,12 +1127,13 @@ async def _bootstrap_conversation(
     *,
     subject_type: SubjectType,
     subject_id: str,
+    locale: str,
 ) -> dict:
     with SessionLocal() as db:
         conversation = db.get(AiConversation, conversation_id)
         if conversation is None or not _subject_exists(db, subject_type, subject_id):
             raise LookupError("subject not found")
-        settings = _subject_settings(db, conversation)
+        settings = _subject_settings(db, conversation, locale)
 
     assistant_text = await _run_chat_completion(
         _build_model_messages(
@@ -1119,6 +1143,7 @@ async def _bootstrap_conversation(
             None,
             (),
             settings.model_default_instruction,
+            locale,
         ),
         tools=settings.tools,
         current_session_id=settings.current_session_id,
@@ -1153,7 +1178,7 @@ async def _bootstrap_conversation(
         return _conversation_dict(conversation, [user_message, assistant_message])
 
 
-async def open_conversation(subject_type: SubjectType, subject_id: str) -> dict:
+async def open_conversation(subject_type: SubjectType, subject_id: str, locale: str = "ru") -> dict:
     with SessionLocal() as db:
         if not _subject_exists(db, subject_type, subject_id):
             raise LookupError("subject not found")
@@ -1169,7 +1194,7 @@ async def open_conversation(subject_type: SubjectType, subject_id: str) -> dict:
         if messages:
             return _conversation_dict(conversation, messages)
     return await _bootstrap_conversation(
-        conversation.id, subject_type=subject_type, subject_id=subject_id
+        conversation.id, subject_type=subject_type, subject_id=subject_id, locale=locale
     )
 
 
@@ -1233,7 +1258,7 @@ async def send_conversation_message(conversation_id: str, content: str) -> dict:
         }
 
 
-async def reset_conversation(conversation_id: str) -> dict:
+async def reset_conversation(conversation_id: str, locale: str = "ru") -> dict:
     with SessionLocal() as db:
         conversation = db.get(AiConversation, conversation_id)
         if conversation is None:
@@ -1248,7 +1273,7 @@ async def reset_conversation(conversation_id: str) -> dict:
         conversation.updated_at = _utcnow()
         db.commit()
     return await _bootstrap_conversation(
-        conversation_id, subject_type=subject_type, subject_id=subject_id
+        conversation_id, subject_type=subject_type, subject_id=subject_id, locale=locale
     )
 
 
@@ -1259,12 +1284,17 @@ async def assess(
     question: str | None,
     history: Sequence[dict[str, str]] = (),
     completed: bool = False,
+    locale: str = "ru",
 ) -> str:
     subject_settings = SubjectSettings(
         system_prompt=FERMENTATION_SYSTEM_PROMPT if kind == "fermentation" else BREW_SYSTEM_PROMPT,
         context=context,
         context_tag="current_session_context",
-        displayed_default_question=DEFAULT_QUESTIONS[(kind, completed)],
+        displayed_default_question=_localized_default_question(
+            "brew_session" if kind == "brew" else "fermentation_session",
+            completed,
+            locale,
+        ),
         model_default_instruction=DEFAULT_INSTRUCTIONS[(kind, completed)],
         tools=TOOLS,
         current_session_id=session_id,
@@ -1279,6 +1309,7 @@ async def assess(
                     subject_settings.context_tag,
                     subject_settings.context,
                     None,
+                    locale if question is None else None,
                 ),
             },
             *history,
@@ -1294,6 +1325,7 @@ async def review_recipe(
     context: str,
     question: str | None,
     history: Sequence[dict[str, str]] = (),
+    locale: str = "ru",
 ) -> str:
     prompt = question or RECIPE_REVIEW_DEFAULT
     return await _run_chat_completion(
@@ -1301,7 +1333,11 @@ async def review_recipe(
             {
                 "role": "system",
                 "content": _build_system_block(
-                    RECIPE_REVIEW_SYSTEM_PROMPT, "recipe_context", context, None
+                    RECIPE_REVIEW_SYSTEM_PROMPT,
+                    "recipe_context",
+                    context,
+                    None,
+                    locale if question is None else None,
                 ),
             },
             *history,

@@ -48,7 +48,7 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
     setPendingUserMessage(null)
     setShowResetConfirm(false)
 
-    void openAiConversation(subjectType, subjectId, controller.signal)
+    void openAiConversation(subjectType, subjectId, navigator.language, controller.signal)
       .then((nextConversation) => {
         if (cancelled) return
         setConversation(nextConversation)
@@ -114,7 +114,7 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
     setQuestion('')
     setVisibleMessages([])
     try {
-      const resetConversation = await resetAiConversation(conversation.id)
+      const resetConversation = await resetAiConversation(conversation.id, navigator.language)
       setConversation(resetConversation)
       setVisibleMessages(resetConversation.messages)
     } catch (requestError) {

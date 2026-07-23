@@ -30,6 +30,7 @@ from features.ai.services import (
     _RECENT_MESSAGES,
     _SUMMARY_TRIGGER_MESSAGES,
     DEFAULT_INSTRUCTIONS,
+    _localized_default_question,
     _sample,
     _validate_generated_profile,
     assess,
@@ -362,6 +363,11 @@ _VALID_WIZARD_JSON = json.dumps(
 
 
 async def main() -> None:
+    assert _localized_default_question("recipe", False, "ru-RU") == (
+        "Проверь рецепт, всё ли с ним ок?"
+    )
+    assert _localized_default_question("recipe", False, "de-DE") == "Is this recipe okay?"
+
     telemetry = _sample(
         [SimpleNamespace(timestamp="2026-07-22", gravity=1012.0, temperature=20.0, battery=92.0)],
         ("timestamp", "gravity", "temperature"),
@@ -385,9 +391,11 @@ async def main() -> None:
         assert (
             "<current_session_context>" in bootstrap_factory.requests[0]["messages"][0]["content"]
         )
+        bootstrap_instruction = bootstrap_factory.requests[0]["messages"][-1]["content"]
+        assert bootstrap_instruction.strip() == DEFAULT_INSTRUCTIONS[("brew", False)].strip()
         assert (
-            bootstrap_factory.requests[0]["messages"][-1]["content"].strip()
-            == DEFAULT_INSTRUCTIONS[("brew", False)].strip()
+            "Reply using browser locale ru."
+            in bootstrap_factory.requests[0]["messages"][0]["content"]
         )
         assert {tool["function"]["name"] for tool in bootstrap_factory.requests[0]["tools"]} == {
             "list_brew_sessions",
@@ -395,6 +403,20 @@ async def main() -> None:
             "search_sessions",
             "get_session_context",
         }
+
+        english_factory = _FakeOpenAIFactory([[_message("Fermentation is active.")]])
+        with (
+            patch("features.ai.services.SessionLocal", db.SessionLocal),
+            patch("features.ai.services.AsyncOpenAI", english_factory),
+        ):
+            english_conversation = await open_conversation(
+                "fermentation_session", "ferm-1", "en-US"
+            )
+        assert english_conversation["messages"][0]["content"] == "How is fermentation going?"
+        assert (
+            "Reply using browser locale en-US."
+            in english_factory.requests[0]["messages"][0]["content"]
+        )
 
         reopen_factory = _FakeOpenAIFactory([])
         with (
@@ -546,6 +568,8 @@ async def main() -> None:
         wizard_system = wizard_request["messages"][0]["content"]
         for token in ("Target", "Ramp", "Duration", "StepStart", "GreaterThan"):
             assert token in wizard_system
+        assert "same language" in wizard_system
+        assert "required service step names" in wizard_system
 
         def assert_wizard_error(mutator, expected: str) -> None:
             invalid = json.loads(_VALID_WIZARD_JSON)
@@ -623,10 +647,11 @@ async def main() -> None:
         assert len(retry_factory.requests) == 2
         retry_messages = retry_factory.requests[1]["messages"]
         assert retry_messages[-2] == {"role": "assistant", "content": '{"name":"bad"}'}
-        assert "Ошибка валидации" in retry_messages[-1]["content"]
-        assert "Исправление:" in retry_messages[-1]["content"]
+        assert "Validation error:" in retry_messages[-1]["content"]
+        assert "Repair:" in retry_messages[-1]["content"]
         assert "fixed profile fields are invalid" in retry_messages[-1]["content"]
         assert "public=false" in retry_messages[-1]["content"]
+        assert "original user recipe" in retry_messages[-1]["content"]
 
         failed_retry_factory = _FakeOpenAIFactory([[_message('{"name":"bad"}')], [_message("[]")]])
         with patch("features.ai.services.AsyncOpenAI", failed_retry_factory):
@@ -866,7 +891,7 @@ async def main() -> None:
             repaired_profile = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
         assert repaired_profile["steps"][4]["alerts"][0]["alertText"]
         alert_retry_message = missing_alert_text_factory.requests[1]["messages"][-1]["content"]
-        assert "У каждого step-alert обязателен непустой alertText" in alert_retry_message
+        assert "clear non-empty alertText in the user's language" in alert_retry_message
 
         reset_factory = _FakeOpenAIFactory([[_message("Новая стартовая оценка.")]])
         with (

@@ -21,10 +21,25 @@ router = APIRouter()
 class OpenConversationRequest(BaseModel):
     subject_type: Literal["brew_session", "fermentation_session", "recipe"]
     subject_id: str = Field(min_length=1, max_length=128)
+    locale: str = Field(
+        default="ru",
+        min_length=2,
+        max_length=35,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+    )
 
 
 class ConversationMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
+
+
+class ResetConversationRequest(BaseModel):
+    locale: str = Field(
+        default="ru",
+        min_length=2,
+        max_length=35,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+    )
 
 
 class RecipeWizardRequest(BaseModel):
@@ -44,7 +59,7 @@ def _raise_ai_error(error: Exception) -> None:
 @router.post("/api/ai/conversations/open")
 async def open_conversation_endpoint(request: OpenConversationRequest) -> dict:
     try:
-        return await open_conversation(request.subject_type, request.subject_id)
+        return await open_conversation(request.subject_type, request.subject_id, request.locale)
     except LookupError as error:
         raise HTTPException(404, "AI subject not found") from error
     except (APIConnectionError, OpenAIError) as error:
@@ -67,9 +82,12 @@ async def create_conversation_message(
 
 
 @router.post("/api/ai/conversations/{conversation_id}/reset")
-async def reset_conversation_endpoint(conversation_id: str) -> dict:
+async def reset_conversation_endpoint(
+    conversation_id: str,
+    request: ResetConversationRequest | None = None,
+) -> dict:
     try:
-        return await reset_conversation(conversation_id)
+        return await reset_conversation(conversation_id, request.locale if request else "ru")
     except LookupError as error:
         raise HTTPException(404, "AI conversation not found") from error
     except (APIConnectionError, OpenAIError) as error:
