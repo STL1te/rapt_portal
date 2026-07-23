@@ -27,15 +27,14 @@ from core.db import (
     Profile,
 )
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
+from features.ai.recipe_wizard import _validate_generated_profile, generate_profile
 from features.ai.services import (
     _RECENT_MESSAGES,
     _SUMMARY_TRIGGER_MESSAGES,
     DEFAULT_INSTRUCTIONS,
     _localized_default_question,
     _sample,
-    _validate_generated_profile,
     assess,
-    generate_profile,
     open_conversation,
     reset_conversation,
     review_recipe,

@@ -10,8 +10,8 @@ from fastapi.responses import StreamingResponse
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
+from .recipe_wizard import generate_profile
 from .services import (
-    generate_profile,
     open_conversation,
     reset_conversation,
     send_conversation_message,
