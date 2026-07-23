@@ -736,6 +736,8 @@ async def test_generate_profile_happy_path(install_llm):
     assert "steps" not in schema["properties"]
     assert "mash_rests" in schema["properties"]
     assert "boil_additions" in schema["properties"]
+    assert "include_sparge" in schema["properties"]
+    assert "include_mash_out" in schema["properties"]
     wizard_system = request["messages"][0]["content"]
     assert "submit_recipe_spec" in wizard_system
     assert "Do not return prose or construct low-level profile steps" in wizard_system
@@ -1044,6 +1046,25 @@ def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
     assert all(any(alert["trigger"] == "StepEnd" for alert in step["alerts"]) for step in rests)
     sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
     assert sparge["alerts"][0]["trigger"] == "StepStart"
+
+
+def test_compile_recipe_honors_disabled_setup_features():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "mash_in_alert_text": None,
+        "include_temperature_alerts": False,
+        "include_sparge": False,
+        "include_mash_out": False,
+    }
+
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    names = [step["name"] for step in profile["steps"]]
+    assert "Mash Out" not in names
+    assert "Sparge" not in names
+    assert all(
+        alert["trigger"] != "Temperature" for step in profile["steps"] for alert in step["alerts"]
+    )
 
 
 async def test_generate_profile_gives_up_after_second_failure(install_llm):

@@ -42,8 +42,11 @@ class RecipeSpec(_SpecModel):
     name: str = Field(min_length=STEP_NAME_MIN_LEN, max_length=STEP_NAME_MAX_LEN)
     description: str = Field(min_length=12, max_length=2000)
     mash_in_temperature_c: float | None = Field(default=None, allow_inf_nan=False)
-    mash_in_alert_text: str = Field(min_length=1, max_length=500)
+    mash_in_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
     mash_rests: list[RestSpec] = Field(default_factory=list)
+    include_temperature_alerts: bool = True
+    include_sparge: bool = True
+    include_mash_out: bool = True
     heat_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     rest_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     mash_pid_enabled: bool = False
@@ -200,7 +203,7 @@ def _append_rest(
     spec: RecipeSpec,
     previous_temperature: float,
 ) -> float:
-    temperature_alerts = _temperature_alerts(rest)
+    temperature_alerts = _temperature_alerts(rest) if spec.include_temperature_alerts else []
     separate_transition = (
         spec.heat_power_pct is not None
         and spec.rest_power_pct is not None
@@ -263,14 +266,16 @@ def _boil_alerts(spec: RecipeSpec) -> list[dict]:
 def compile_recipe(spec: RecipeSpec) -> dict:
     """Compile semantic recipe facts into the only low-level profile shape we emit."""
     mash_rests = list(spec.mash_rests)
-    mash_out = RestSpec(
-        name="Mash Out",
-        temperature_c=78,
-        duration_seconds=spec.mash_out_duration_seconds,
-        end_alert_text=spec.mash_out_end_alert_text,
-    )
-    if mash_rests and mash_rests[-1].temperature_c == 78:
-        mash_out = mash_rests.pop().model_copy(update={"name": "Mash Out"})
+    mash_out = None
+    if spec.include_mash_out:
+        mash_out = RestSpec(
+            name="Mash Out",
+            temperature_c=78,
+            duration_seconds=spec.mash_out_duration_seconds,
+            end_alert_text=spec.mash_out_end_alert_text,
+        )
+        if mash_rests and mash_rests[-1].temperature_c == 78:
+            mash_out = mash_rests.pop().model_copy(update={"name": "Mash Out"})
 
     first_rest_temperature = mash_rests[0].temperature_c if mash_rests else None
     mash_in_temperature = spec.mash_in_temperature_c
@@ -283,6 +288,19 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         if not 2 <= delta <= 4:
             raise ValueError("mash-in temperature must be 2-4 degrees above the first rest")
 
+    if spec.include_temperature_alerts and not spec.mash_in_alert_text:
+        raise ValueError("mash-in alert text is required when temperature alerts are enabled")
+    mash_in_alerts = (
+        [
+            _alert(
+                spec.mash_in_alert_text,
+                "Temperature",
+                temperature=mash_in_temperature,
+            )
+        ]
+        if spec.include_temperature_alerts and spec.mash_in_alert_text
+        else []
+    )
     steps = [
         _step(
             "Mash In",
@@ -294,36 +312,52 @@ def compile_recipe(spec: RecipeSpec) -> dict:
             pid=False,
             pump_enabled=spec.pump_enabled,
             pump_utilisation=spec.pump_utilisation_pct,
-            alerts=[
-                _alert(
-                    spec.mash_in_alert_text,
-                    "Temperature",
-                    temperature=mash_in_temperature,
-                )
-            ],
+            alerts=mash_in_alerts,
         )
     ]
     previous_temperature = mash_in_temperature
     for rest in mash_rests:
         previous_temperature = _append_rest(steps, rest, spec, previous_temperature)
 
-    previous_temperature = _append_rest(steps, mash_out, spec, previous_temperature)
-    steps.append(
-        _step(
-            "Sparge",
-            78,
-            end_type="Manual",
-            duration_type="Manual",
-            length=None,
-            heating=spec.rest_power_pct,
-            pid=spec.mash_pid_enabled,
-            pump_enabled=spec.pump_enabled,
-            pump_utilisation=spec.pump_utilisation_pct,
-            alerts=(
-                [_alert(spec.sparge_alert_text, "StepStart")] if spec.sparge_alert_text else []
-            ),
+    if mash_out:
+        _append_rest(steps, mash_out, spec, previous_temperature)
+    if spec.include_sparge:
+        if (
+            not mash_out
+            and previous_temperature < 78
+            and spec.heat_power_pct is not None
+            and spec.rest_power_pct is not None
+            and spec.heat_power_pct != spec.rest_power_pct
+        ):
+            steps.append(
+                _step(
+                    "→ 78 °C",
+                    78,
+                    end_type="Temperature",
+                    duration_type="Temperature",
+                    length=None,
+                    heating=spec.heat_power_pct,
+                    pid=False,
+                    pump_enabled=spec.pump_enabled,
+                    pump_utilisation=spec.pump_utilisation_pct,
+                )
+            )
+        steps.append(
+            _step(
+                "Sparge",
+                78,
+                end_type="Manual",
+                duration_type="Manual",
+                length=None,
+                heating=spec.rest_power_pct,
+                pid=spec.mash_pid_enabled,
+                pump_enabled=spec.pump_enabled,
+                pump_utilisation=spec.pump_utilisation_pct,
+                alerts=(
+                    [_alert(spec.sparge_alert_text, "StepStart")] if spec.sparge_alert_text else []
+                ),
+            )
         )
-    )
     steps.append(
         _step(
             "Boil",
