@@ -1,64 +1,133 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { AiAssessment, AiChatMessage } from '@/api'
+import { openAiConversation, resetAiConversation, sendAiMessage } from '@/api'
+import type { AiConversation, AiMessage, AiSubjectType } from '@/types'
 
 type Props = {
   open: boolean
   onClose: () => void
-  // Текст реплики пользователя, показываемый на автозапуск (модель получает
-  // расширенную директиву на бэке).
-  defaultQuestion: string
-  // Обёртка над конкретным эндпоинтом (assessSession / reviewRecipe). null =
-  // дефолтный запрос.
-  ask: (question: string | null, history: AiChatMessage[]) => Promise<AiAssessment>
+  subjectType: AiSubjectType
+  subjectId: string
 }
 
-export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Props) {
-  const [messages, setMessages] = useState<AiChatMessage[]>([])
+type PendingUserMessage = {
+  role: 'user'
+  content: string
+}
+
+export default function AiAssistant({ open, onClose, subjectType, subjectId }: Props) {
+  const [conversation, setConversation] = useState<AiConversation | null>(null)
+  const [visibleMessages, setVisibleMessages] = useState<AiMessage[]>([])
   const [question, setQuestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isBootstrapping, setIsBootstrapping] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const started = useRef(false)
+  const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null)
   const messagesEnd = useRef<HTMLDivElement>(null)
   const swipeStartY = useRef<number | null>(null)
 
-  const send = useCallback(
-    async (nextQuestion: string | null, history: AiChatMessage[]) => {
-      const shownQuestion = nextQuestion ?? defaultQuestion
-      const nextMessages = [...history, { role: 'user' as const, content: shownQuestion }]
-      setMessages(nextMessages)
-      setQuestion('')
-      setIsLoading(true)
-      setError(null)
-      try {
-        const assessment = await ask(nextQuestion, history)
-        setMessages([
-          ...history,
-          { role: 'user', content: assessment.question },
-          { role: 'assistant', content: assessment.answer },
-        ])
-      } catch (requestError) {
-        setError(String(requestError))
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [ask, defaultQuestion],
+  const subjectKey = `${subjectType}:${subjectId}`
+  const loadedSubjectKey = useMemo(
+    () => (conversation ? `${conversation.subject_type}:${conversation.subject_id}` : null),
+    [conversation],
   )
 
   useEffect(() => {
-    if (!open || started.current) return
-    started.current = true
-    void send(null, [])
-  }, [send, open])
+    if (!open) return
+    if (loadedSubjectKey === subjectKey && conversation) return
+
+    const controller = new AbortController()
+    let cancelled = false
+
+    setIsBootstrapping(true)
+    setError(null)
+    setPendingUserMessage(null)
+    setShowResetConfirm(false)
+
+    void openAiConversation(subjectType, subjectId, controller.signal)
+      .then((nextConversation) => {
+        if (cancelled) return
+        setConversation(nextConversation)
+        setVisibleMessages(nextConversation.messages)
+      })
+      .catch((requestError) => {
+        if (cancelled || controller.signal.aborted) return
+        setError(String(requestError))
+      })
+      .finally(() => {
+        if (!cancelled) setIsBootstrapping(false)
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [conversation, loadedSubjectKey, open, subjectId, subjectKey, subjectType])
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ block: 'end' })
-  }, [messages, isLoading])
+  }, [conversation, isLoading, isBootstrapping, pendingUserMessage])
 
   if (!open) return null
+
+  async function handleSend(rawQuestion: string) {
+    const trimmed = rawQuestion.trim()
+    if (!trimmed || !conversation || isLoading || isBootstrapping || isResetting) return
+
+    const preservedText = trimmed
+    setQuestion('')
+    setIsLoading(true)
+    setError(null)
+    setPendingUserMessage({ role: 'user', content: preservedText })
+    try {
+      const turn = await sendAiMessage(conversation.id, preservedText)
+      setConversation((current) =>
+        current
+          ? {
+              ...current,
+              messages: [...current.messages, turn.user_message, turn.assistant_message],
+            }
+          : current,
+      )
+      setVisibleMessages((current) => [...current, turn.user_message, turn.assistant_message])
+      setPendingUserMessage(null)
+    } catch (requestError) {
+      setPendingUserMessage(null)
+      setQuestion(preservedText)
+      setError(String(requestError))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function handleReset() {
+    if (!conversation || isLoading || isBootstrapping || isResetting) return
+
+    setIsResetting(true)
+    setShowResetConfirm(false)
+    setError(null)
+    setPendingUserMessage(null)
+    setQuestion('')
+    setVisibleMessages([])
+    try {
+      const resetConversation = await resetAiConversation(conversation.id)
+      setConversation(resetConversation)
+      setVisibleMessages(resetConversation.messages)
+    } catch (requestError) {
+      setError(String(requestError))
+      setVisibleMessages(conversation.messages)
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  const shownMessages: Array<AiMessage | PendingUserMessage> = pendingUserMessage
+    ? [...visibleMessages, pendingUserMessage]
+    : visibleMessages
 
   return (
     <div className="ai-chat-layer" role="dialog" aria-modal="true" aria-label="AI-ассистент">
@@ -86,6 +155,15 @@ export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Pro
           <div className="ai-chat-head-actions">
             <button
               type="button"
+              onClick={() => setShowResetConfirm((value) => !value)}
+              disabled={!conversation || isLoading || isBootstrapping || isResetting}
+              aria-label="Начать новый чат"
+              title="Начать новый чат"
+            >
+              <i className="fa-solid fa-rotate-left" />
+            </button>
+            <button
+              type="button"
               onClick={() => setIsFullscreen((value) => !value)}
               aria-label={isFullscreen ? 'Уменьшить окно' : 'Развернуть на весь экран'}
               title={isFullscreen ? 'Уменьшить окно' : 'Развернуть на весь экран'}
@@ -100,9 +178,31 @@ export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Pro
           </div>
         </header>
 
+        {showResetConfirm && !isResetting && (
+          <div className="ai-chat-inline-confirm" role="alert">
+            <p>Начать новый чат? Текущая история этого ассистента будет очищена.</p>
+            <div className="ai-chat-inline-confirm-actions">
+              <button type="button" className="confirm" onClick={() => void handleReset()}>
+                Начать заново
+              </button>
+              <button type="button" className="cancel" onClick={() => setShowResetConfirm(false)}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="ai-chat-messages" aria-live="polite">
-          {messages.map((message, index) => (
-            <article key={`${message.role}-${index}`} className={`ai-bubble ${message.role}`}>
+          {isBootstrapping && !visibleMessages.length ? (
+            <div className="ai-chat-loading">
+              <span /> <span /> <span /> AI-ассистент думает…
+            </div>
+          ) : null}
+          {shownMessages.map((message, index) => (
+            <article
+              key={'id' in message ? message.id : `pending-${index}`}
+              className={`ai-bubble ${message.role}`}
+            >
               {message.role === 'assistant' ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
               ) : (
@@ -115,6 +215,11 @@ export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Pro
               <span /> <span /> <span /> AI-ассистент думает…
             </div>
           )}
+          {isResetting && (
+            <div className="ai-chat-loading">
+              <span /> <span /> <span /> AI-ассистент начинает новый чат…
+            </div>
+          )}
           {error && <p className="error">Не удалось получить ответ: {error}</p>}
           <div ref={messagesEnd} />
         </div>
@@ -123,7 +228,7 @@ export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Pro
           className="ai-chat-compose"
           onSubmit={(event) => {
             event.preventDefault()
-            if (question.trim() && !isLoading) void send(question.trim(), messages)
+            void handleSend(question)
           }}
         >
           <textarea
@@ -132,14 +237,20 @@ export default function AiAssistant({ open, onClose, defaultQuestion, ask }: Pro
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
-                if (question.trim() && !isLoading) void send(question.trim(), messages)
+                void handleSend(question)
               }
             }}
             placeholder="Сообщение AI-ассистенту…"
             maxLength={2000}
-            disabled={isLoading}
+            disabled={isLoading || isBootstrapping || isResetting || !conversation}
           />
-          <button type="submit" disabled={isLoading || !question.trim()} aria-label="Отправить">
+          <button
+            type="submit"
+            disabled={
+              isLoading || isBootstrapping || isResetting || !conversation || !question.trim()
+            }
+            aria-label="Отправить"
+          >
             <i className="fa-solid fa-arrow-up" />
           </button>
         </form>

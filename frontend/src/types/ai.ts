@@ -1,23 +1,22 @@
-export type AiChatMessage = {
+export type AiSubjectType = 'brew_session' | 'fermentation_session' | 'recipe'
+
+export type AiMessage = {
+  id: number
   role: 'user' | 'assistant'
   content: string
+  created_at: string
 }
 
-export type AiAssessmentRequest = {
-  kind: 'brew' | 'fermentation'
-  session_id: string
-  question: string | null
-  history: AiChatMessage[]
-}
-
-export type AiAssessment = {
-  answer: string
+export type AiConversation = {
+  id: string
+  subject_type: AiSubjectType
+  subject_id: string
   model: string
-  question: string
+  messages: AiMessage[]
 }
 
-export type RecipeReviewRequest = {
-  profile_id: string
-  question: string | null
-  history: AiChatMessage[]
+export type AiTurn = {
+  user_message: AiMessage
+  assistant_message: AiMessage
+  model: string
 }

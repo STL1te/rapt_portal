@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { deleteProfile, getProfile, getSystemJob, recipeAssistant, uploadProfile } from '@/api'
+import { deleteProfile, getProfile, getSystemJob, uploadProfile } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import MetricCard from '@/components/MetricCard'
 import type { ControlType, EndType, ProfileStep, SystemJob } from '@/types'
@@ -158,7 +158,8 @@ export default function RecipeDetail() {
         key={data.id}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
-        {...recipeAssistant(data.id)}
+        subjectType="recipe"
+        subjectId={data.id}
       />
 
       <div className="recipe-actions">

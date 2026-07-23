@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -172,3 +173,34 @@ class SystemJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     result_json: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class AiConversation(Base):
+    __tablename__ = "ai_conversations"
+    __table_args__ = (
+        UniqueConstraint("subject_type", "subject_id", name="uq_ai_conversation_subject"),
+        CheckConstraint(
+            "subject_type IN ('brew_session', 'fermentation_session', 'recipe')",
+            name="ck_ai_conversation_subject_type",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String, index=True)
+    subject_id: Mapped[str] = mapped_column(String, index=True)
+    prompt_version: Mapped[str] = mapped_column(String)
+    summary: Mapped[str | None] = mapped_column(Text)
+    summary_through_message_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class AiMessage(Base):
+    __tablename__ = "ai_messages"
+    __table_args__ = (CheckConstraint("role IN ('user', 'assistant')", name="ck_ai_message_role"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("ai_conversations.id"), index=True)
+    role: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime)

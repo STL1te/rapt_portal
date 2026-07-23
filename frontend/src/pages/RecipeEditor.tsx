@@ -485,7 +485,9 @@ function StepModal({
               <select
                 value={draft.durationType ?? ''}
                 onChange={(e) =>
-                  onChange({ durationType: (e.target.value || null) as ProfileStep['durationType'] })
+                  onChange({
+                    durationType: (e.target.value || null) as ProfileStep['durationType'],
+                  })
                 }
               >
                 {durationTypesFor(kind).map((c) => (
@@ -498,7 +500,9 @@ function StepModal({
           ) : null}
           {showsDuration(draft) ? (
             <label className="field">
-              <span>{draft.controlType === 'Ramp' ? 'Длительность разгона' : 'Длительность шага'}</span>
+              <span>
+                {draft.controlType === 'Ramp' ? 'Длительность разгона' : 'Длительность шага'}
+              </span>
               <div className="time-input">
                 <input
                   type="number"
@@ -530,10 +534,13 @@ function StepModal({
               <label className="field">
                 <span>Нагрев, %</span>
                 <select
-                  value={draft.heatingUtilisation == null ? 'manual' : String(draft.heatingUtilisation)}
+                  value={
+                    draft.heatingUtilisation == null ? 'manual' : String(draft.heatingUtilisation)
+                  }
                   onChange={(e) =>
                     onChange({
-                      heatingUtilisation: e.target.value === 'manual' ? null : Number(e.target.value),
+                      heatingUtilisation:
+                        e.target.value === 'manual' ? null : Number(e.target.value),
                     })
                   }
                 >
@@ -756,7 +763,9 @@ export default function RecipeEditor() {
     }
     setSaving(true)
     try {
-      const saved = isEdit ? await updateProfile(id as string, payload) : await createProfile(payload)
+      const saved = isEdit
+        ? await updateProfile(id as string, payload)
+        : await createProfile(payload)
       setDirty(false) // saved — don't warn on the navigation below
       await queryClient.invalidateQueries({ queryKey: ['profiles'] })
       await queryClient.invalidateQueries({ queryKey: ['profile', saved.id] })
@@ -789,9 +798,7 @@ export default function RecipeEditor() {
       <div className="page-head">
         <div>
           <h2>{isEdit ? 'Редактирование рецепта' : 'Новый рецепт'}</h2>
-          <p className="editor-subtitle">
-            Пошаговый профиль управления температурой для брожения.
-          </p>
+          <p className="editor-subtitle">Пошаговый профиль управления температурой для брожения.</p>
         </div>
       </div>
 
@@ -869,95 +876,100 @@ export default function RecipeEditor() {
           />
         </section>
       ) : (
-      <section className="panel">
-        <div className="steps-head">
-          <h3 className="panel-title">Шаги</h3>
-          <button type="button" onClick={addStep}>
-            <i className="fa-solid fa-plus" /> Шаг
-          </button>
-        </div>
+        <section className="panel">
+          <div className="steps-head">
+            <h3 className="panel-title">Шаги</h3>
+            <button type="button" onClick={addStep}>
+              <i className="fa-solid fa-plus" /> Шаг
+            </button>
+          </div>
 
-        {steps.map((st, i) => (
-          <div
-            key={st._uid}
-            className={`step-editor step-row${dragIdx === i ? ' dragging' : ''}${
-              over && over.i === i && dragIdx !== i ? ` drop-${over.pos}` : ''
-            }`}
-            onDragOver={(e) => onStepDragOver(e, i)}
-            onDrop={onStepDrop}
-          >
-            <i
-              className="handle fa-solid fa-grip-vertical"
-              title="Перетащить"
-              draggable
-              onDragStart={(e) => onStepDragStart(e, i)}
-              onDragEnd={endDrag}
-            />
-            <span className="step-num">{i + 1}</span>
-            <button type="button" className="step-row-main" onClick={() => openStep(st)}>
-              <span className="name">{st.name?.trim() || `Шаг ${i + 1}`}</span>
-              <span className="step-summary-meta">
-                {st.controlType ? (
-                  <span className="badge active">
-                    {CONTROL_SHORT[st.controlType] ?? st.controlType}
-                  </span>
-                ) : null}
-                {st.temperature != null ? <span>{st.temperature}°C</span> : null}
-                {st.endType ? <span>· {END_SHORT[st.endType] ?? st.endType}</span> : null}
+          {steps.map((st, i) => (
+            <div
+              key={st._uid}
+              className={`step-editor step-row${dragIdx === i ? ' dragging' : ''}${
+                over && over.i === i && dragIdx !== i ? ` drop-${over.pos}` : ''
+              }`}
+              onDragOver={(e) => onStepDragOver(e, i)}
+              onDrop={onStepDrop}
+            >
+              <i
+                className="handle fa-solid fa-grip-vertical"
+                title="Перетащить"
+                draggable
+                onDragStart={(e) => onStepDragStart(e, i)}
+                onDragEnd={endDrag}
+              />
+              <span className="step-num">{i + 1}</span>
+              <button type="button" className="step-row-main" onClick={() => openStep(st)}>
+                <span className="name">{st.name?.trim() || `Шаг ${i + 1}`}</span>
+                <span className="step-summary-meta">
+                  {st.controlType ? (
+                    <span className="badge active">
+                      {CONTROL_SHORT[st.controlType] ?? st.controlType}
+                    </span>
+                  ) : null}
+                  {st.temperature != null ? <span>{st.temperature}°C</span> : null}
+                  {st.endType ? <span>· {END_SHORT[st.endType] ?? st.endType}</span> : null}
+                </span>
+              </button>
+              {stepProblem(st) ? (
+                <i
+                  className="fa-solid fa-triangle-exclamation step-warn"
+                  title={stepProblem(st) ?? undefined}
+                />
+              ) : null}
+              <div className="step-row-actions">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Вверх"
+                  disabled={i === 0}
+                  onClick={() => moveStep(i, -1)}
+                >
+                  <i className="fa-solid fa-arrow-up" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Вниз"
+                  disabled={i === steps.length - 1}
+                  onClick={() => moveStep(i, 1)}
+                >
+                  <i className="fa-solid fa-arrow-down" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Редактировать"
+                  onClick={() => openStep(st)}
+                >
+                  <i className="fa-solid fa-pen" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Удалить"
+                  onClick={() => {
+                    markDirty()
+                    setSteps((s) => reindex(s.filter((_, idx) => idx !== i)))
+                  }}
+                >
+                  <i className="fa-solid fa-trash" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {steps.length === 0 ? (
+            <button type="button" className="empty-steps" onClick={addStep}>
+              <i className="fa-solid fa-plus" />
+              <span className="empty-steps-title">Добавьте первый шаг</span>
+              <span className="empty-steps-desc">
+                Шаги задают температуру и условие перехода по ходу брожения.
               </span>
             </button>
-            {stepProblem(st) ? (
-              <i
-                className="fa-solid fa-triangle-exclamation step-warn"
-                title={stepProblem(st) ?? undefined}
-              />
-            ) : null}
-            <div className="step-row-actions">
-              <button
-                type="button"
-                className="icon-btn"
-                title="Вверх"
-                disabled={i === 0}
-                onClick={() => moveStep(i, -1)}
-              >
-                <i className="fa-solid fa-arrow-up" />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                title="Вниз"
-                disabled={i === steps.length - 1}
-                onClick={() => moveStep(i, 1)}
-              >
-                <i className="fa-solid fa-arrow-down" />
-              </button>
-              <button type="button" className="icon-btn" title="Редактировать" onClick={() => openStep(st)}>
-                <i className="fa-solid fa-pen" />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                title="Удалить"
-                onClick={() => {
-                  markDirty()
-                  setSteps((s) => reindex(s.filter((_, idx) => idx !== i)))
-                }}
-              >
-                <i className="fa-solid fa-trash" />
-              </button>
-            </div>
-          </div>
-        ))}
-        {steps.length === 0 ? (
-          <button type="button" className="empty-steps" onClick={addStep}>
-            <i className="fa-solid fa-plus" />
-            <span className="empty-steps-title">Добавьте первый шаг</span>
-            <span className="empty-steps-desc">
-              Шаги задают температуру и условие перехода по ходу брожения.
-            </span>
-          </button>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
       )}
 
       {editing ? (

@@ -343,6 +343,46 @@ h2:first-child {
   padding: 18px;
 }
 
+.ai-chat-inline-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-soft) 76%, transparent);
+}
+
+.ai-chat-inline-confirm p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.ai-chat-inline-confirm-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ai-chat-inline-confirm-actions button {
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-chat-inline-confirm-actions .confirm {
+  background: var(--accent);
+  color: white;
+}
+
+.ai-chat-inline-confirm-actions .cancel {
+  background: var(--bg);
+  color: var(--text);
+}
+
 .ai-bubble {
   max-width: min(88%, 480px);
   border-radius: 18px;
@@ -890,8 +930,21 @@ h2:first-child {
     border-radius: 0;
   }
 
-  .ai-chat-head-actions button:first-child {
-    display: none;
+  .ai-chat-head-actions {
+    gap: 2px;
+  }
+
+  .ai-chat-inline-confirm {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ai-chat-inline-confirm-actions {
+    width: 100%;
+  }
+
+  .ai-chat-inline-confirm-actions button {
+    flex: 1;
   }
 
   .fermentation-summary,

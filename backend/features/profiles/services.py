@@ -233,16 +233,18 @@ def _upload_body(p: Profile) -> dict:
     new = p.id.startswith("local-")
     steps = json.loads(p.steps_json) if p.steps_json else []
     alerts = json.loads(p.alerts_json) if p.alerts_json else []
-    return _strip({
-        "id": "" if new else p.id,
-        "name": p.name,
-        "description": p.description,
-        "public": bool(p.public),
-        "profileTypeId": p.profile_type_id,
-        "deleted": False,
-        "alerts": [_alert_body(a, blank_ids=new, step=False) for a in alerts],
-        "steps": [_step_body(s, profile_id=p.id, blank_ids=new) for s in steps],
-    })
+    return _strip(
+        {
+            "id": "" if new else p.id,
+            "name": p.name,
+            "description": p.description,
+            "public": bool(p.public),
+            "profileTypeId": p.profile_type_id,
+            "deleted": False,
+            "alerts": [_alert_body(a, blank_ids=new, step=False) for a in alerts],
+            "steps": [_step_body(s, profile_id=p.id, blank_ids=new) for s in steps],
+        }
+    )
 
 
 def upload_profile(profile_id: str, portal_token: str | None = None) -> dict:
@@ -285,4 +287,8 @@ def upload_profile(profile_id: str, portal_token: str | None = None) -> dict:
                 db.delete(stale)
                 db.commit()
 
-    return {"status": "ok", "new_id": new_id or (None if was_local else profile_id), "synced": synced}
+    return {
+        "status": "ok",
+        "new_id": new_id or (None if was_local else profile_id),
+        "synced": synced,
+    }

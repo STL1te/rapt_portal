@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getHydrometerSession, getHydrometerTelemetry, sessionAssistant } from '@/api'
+import { getHydrometerSession, getHydrometerTelemetry } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import HydrometerChart from '@/components/HydrometerChart'
 import MetricCard from '@/components/MetricCard'
@@ -171,7 +171,8 @@ export default function HydrometerSessionPage() {
         key={s.id}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
-        {...sessionAssistant('fermentation', s.id, !s.active)}
+        subjectType="fermentation_session"
+        subjectId={s.id}
       />
 
       <section className="session-hero">
