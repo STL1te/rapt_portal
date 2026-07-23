@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from core.config import LLM_MODEL, LLM_TEMPERATURE, LLM_TOP_P
+from core.config import LLM_MODEL, LLM_TOP_P
 from features.profiles.enums import STEP_NAME_MAX_LEN, STEP_NAME_MIN_LEN
 from features.profiles.router import ProfileIn
 
@@ -112,7 +112,7 @@ async def _extract_recipe_spec(messages: list[dict]) -> RecipeSpec:
     request = {
         "model": LLM_MODEL,
         "messages": messages,
-        "temperature": LLM_TEMPERATURE,
+        "temperature": 0,
         "top_p": LLM_TOP_P,
         "tools": [_RECIPE_SPEC_TOOL],
         "tool_choice": "required",

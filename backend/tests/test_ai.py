@@ -725,6 +725,7 @@ async def test_generate_profile_happy_path(install_llm):
         "length": 2700,
     }
     request = factory.requests[0]
+    assert request["temperature"] == 0
     assert request["tool_choice"] == "required"
     assert len(request["tools"]) == 1
     tool = request["tools"][0]["function"]
