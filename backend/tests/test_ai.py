@@ -25,7 +25,7 @@ from core.db import (
     HydrometerTelemetry,
     Profile,
 )
-from features.ai.recipe_wizard import _validate_generated_profile, generate_profile
+from features.ai.recipe_wizard import RecipeSpec, compile_recipe, generate_profile
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
 from features.ai.services import (
     _RECENT_MESSAGES,
@@ -351,6 +351,47 @@ _VALID_WIZARD_JSON = json.dumps(
     ensure_ascii=False,
 )
 _VALID_SEMANTIC_VALIDATION = '{"valid":true,"errors":[]}'
+_VALID_RECIPE_SPEC = {
+    "name": "APA 23 л",
+    "description": "Одноступенчатое затирание и кип 60 минут",
+    "mash_in_temperature_c": 69,
+    "mash_in_alert_text": "Засыпать солод",
+    "mash_rests": [
+        {
+            "name": "Мальтозная пауза",
+            "temperature_c": 67,
+            "duration_seconds": 3600,
+        }
+    ],
+    "heat_power_pct": None,
+    "rest_power_pct": None,
+    "mash_pid_enabled": False,
+    "pump_enabled": None,
+    "pump_utilisation_pct": None,
+    "mash_out_duration_seconds": 600,
+    "boil_temperature_c": 100,
+    "boil_duration_seconds": 3600,
+    "boil_additions": [
+        {
+            "text": "Добавить хмель — до конца кипа 15 минут",
+            "timing_reference": "before_end",
+            "offset_seconds": 900,
+        }
+    ],
+    "whirlpool": None,
+    "cooling_temperature_c": 20,
+}
+
+
+def _recipe_spec_message(spec=None):
+    call = SimpleNamespace(
+        id="recipe-call",
+        function=SimpleNamespace(
+            name="submit_recipe_spec",
+            arguments=json.dumps(spec or _VALID_RECIPE_SPEC, ensure_ascii=False),
+        ),
+    )
+    return _message(tool_calls=[call])
 
 
 # --------------------------------------------------------------------------- #
@@ -465,7 +506,9 @@ async def test_open_conversation_bootstraps_brew(db, install_llm):
     assert request["temperature"] == LLM_TEMPERATURE
     assert request["messages"][0]["role"] == "system"
     assert "<current_session_context>" in request["messages"][0]["content"]
-    assert request["messages"][-1]["content"].strip() == DEFAULT_INSTRUCTIONS[("brew", False)].strip()
+    assert (
+        request["messages"][-1]["content"].strip() == DEFAULT_INSTRUCTIONS[("brew", False)].strip()
+    )
     assert "Reply using browser locale ru." in request["messages"][0]["content"]
     assert {tool["function"]["name"] for tool in request["tools"]} == {
         "list_brew_sessions",
@@ -539,9 +582,7 @@ async def test_failed_llm_call_does_not_persist(db, install_llm, monkeypatch):
     install_llm([_message("Первичный ответ.")])
     conversation = await open_conversation("brew_session", "brew-1")
 
-    monkeypatch.setattr(
-        "features.ai.services._run_chat_completion", _raise(RuntimeError("boom"))
-    )
+    monkeypatch.setattr("features.ai.services._run_chat_completion", _raise(RuntimeError("boom")))
     with pytest.raises(RuntimeError):
         await send_conversation_message(conversation["id"], "Этот ход должен упасть")
 
@@ -652,7 +693,7 @@ async def test_summary_failure_falls_back_to_recent(db, install_llm, monkeypatch
 
 async def test_generate_profile_happy_path(install_llm):
     factory = install_llm(
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     stages: list[str] = []
@@ -686,22 +727,18 @@ async def test_generate_profile_happy_path(install_llm):
         "length": 2700,
     }
     request = factory.requests[0]
-    response_format = request["response_format"]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["strict"] is True
-    schema = response_format["json_schema"]["schema"]
+    assert request["tool_choice"] == "required"
+    assert len(request["tools"]) == 1
+    tool = request["tools"][0]["function"]
+    assert tool["name"] == "submit_recipe_spec"
+    schema = tool["parameters"]
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["steps"]["minItems"] == 1
-    step_schema = schema["properties"]["steps"]["items"]
-    assert step_schema["additionalProperties"] is False
-    assert step_schema["properties"]["controlType"]["enum"] == ["Target", "Ramp"]
-    assert step_schema["properties"]["durationType"]["enum"] == ["Start", "Temperature", "Manual"]
-    assert step_schema["properties"]["alerts"]["items"]["additionalProperties"] is False
+    assert "steps" not in schema["properties"]
+    assert "mash_rests" in schema["properties"]
+    assert "boil_additions" in schema["properties"]
     wizard_system = request["messages"][0]["content"]
-    for token in ("Target", "Ramp", "Duration", "StepStart", "GreaterThan"):
-        assert token in wizard_system
-    assert "same language" in wizard_system
-    assert "required service step names" in wizard_system
+    assert "submit_recipe_spec" in wizard_system
+    assert "Do not return prose or construct low-level profile steps" in wizard_system
     semantic_request = factory.requests[1]
     assert semantic_request["response_format"]["json_schema"]["name"] == "recipe_wizard_validation"
     assert "<source_description>" in semantic_request["messages"][1]["content"]
@@ -710,7 +747,7 @@ async def test_generate_profile_happy_path(install_llm):
 
 async def test_recipe_wizard_stream_emits_progress(install_llm):
     install_llm(
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     response = await recipe_wizard_stream_endpoint(RecipeWizardRequest(description="Кип 60 минут"))
@@ -840,19 +877,38 @@ _WIZARD_ERROR_CASES = [
 ]
 
 
-@pytest.mark.parametrize("mutator, expected", _WIZARD_ERROR_CASES)
-def test_validate_generated_profile_rejects(mutator, expected):
-    data = json.loads(_VALID_WIZARD_JSON)
+_WIZARD_SPEC_ERROR_CASES = [
+    (
+        lambda d: d.__setitem__("mash_in_temperature_c", 72),
+        "mash-in temperature must be 2-4 degrees above the first rest",
+    ),
+    (
+        lambda d: d["boil_additions"][0].__setitem__("offset_seconds", 3700),
+        "boil addition occurs outside the boil",
+    ),
+    (
+        lambda d: (
+            d.__setitem__("mash_in_temperature_c", None),
+            d.__setitem__("mash_rests", []),
+        ),
+        "mash-in temperature or at least one mash rest is required",
+    ),
+]
+
+
+@pytest.mark.parametrize("mutator, expected", _WIZARD_SPEC_ERROR_CASES)
+def test_compile_recipe_rejects_invalid_semantic_spec(mutator, expected):
+    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
     mutator(data)
     with pytest.raises(ValueError) as error:
-        _validate_generated_profile(json.dumps(data))
+        compile_recipe(RecipeSpec.model_validate(data))
     assert expected in str(error.value)
 
 
 async def test_generate_profile_repairs_structural_error(install_llm):
     factory = install_llm(
-        [_message('{"name":"bad"}')],
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message({"name": "bad"})],
+        [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     profile = await generate_profile("Собери профиль IPA с кипом 60 минут")
@@ -860,26 +916,23 @@ async def test_generate_profile_repairs_structural_error(install_llm):
     assert profile["steps"][0]["order"] == 0
     assert len(factory.requests) == 3
     retry_messages = factory.requests[1]["messages"]
-    assert retry_messages[-2] == {"role": "assistant", "content": '{"name":"bad"}'}
     for token in (
-        "Validation error:",
-        "Repair:",
-        "fixed profile fields are invalid",
-        "public=false",
-        "original user recipe",
+        "submit_recipe_spec again",
+        "previous attempt failed",
+        "Field required",
     ):
         assert token in retry_messages[-1]["content"]
 
 
 async def test_generate_profile_repairs_semantic_error(install_llm):
     factory = install_llm(
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message()],
         [
             _message(
                 '{"valid":false,"errors":["Boil spice alert length: expected 3000, actual 600."]}'
             )
         ],
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     stages: list[str] = []
@@ -902,29 +955,45 @@ async def test_generate_profile_repairs_semantic_error(install_llm):
     assert "expected 3000, actual 600" in retry_message
 
 
-async def test_generate_profile_repairs_combined_errors(install_llm):
-    structurally_invalid = json.loads(_VALID_WIZARD_JSON)
-    structurally_invalid["steps"][4]["endType"] = "Temperature"
-    factory = install_llm(
-        [_message(json.dumps(structurally_invalid))],
-        [
-            _message(
-                '{"valid":false,"errors":["Missing zest alert: expected 30-60 g at 3000 seconds."]}'
-            )
-        ],
-        [_message(_VALID_WIZARD_JSON)],
-        [_message(_VALID_SEMANTIC_VALIDATION)],
-    )
-    await generate_profile("Кип 60 минут. Цедра 30-60 г за 10 минут до конца.")
+def test_compile_recipe_applies_power_and_pid_rules():
+    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
+    data.update(heat_power_pct=90, rest_power_pct=50, mash_pid_enabled=True)
 
-    message = factory.requests[2]["messages"][-1]["content"]
-    for token in (
-        "Structural errors:",
-        "boil completion configuration is invalid",
-        "Recipe mismatches:",
-        "Missing zest alert",
-    ):
-        assert token in message
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    mash_in = profile["steps"][0]
+    first_transition = profile["steps"][1]
+    first_rest = profile["steps"][2]
+    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
+    assert mash_in["heatingUtilisation"] == 90
+    assert first_transition["endType"] == "Temperature"
+    assert first_transition["heatingUtilisation"] == 90
+    assert first_rest["heatingUtilisation"] == 50
+    assert first_rest["pidEnabled"] is True
+    assert boil["heatingUtilisation"] == 90
+    assert boil["pidEnabled"] is False
+
+
+def test_compile_recipe_applies_defaults_and_boil_timing():
+    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
+    data["mash_in_temperature_c"] = None
+    data["boil_additions"].append(
+        {
+            "text": "Добавить сахар через 10 минут",
+            "timing_reference": "from_start",
+            "offset_seconds": 600,
+        }
+    )
+
+    profile = compile_recipe(RecipeSpec.model_validate(data))
+
+    assert profile["steps"][0]["temperature"] == 70
+    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
+    assert [alert["length"] for alert in boil["alerts"]] == [2700, 600]
+    assert (
+        next(step for step in profile["steps"] if step["name"] == "Mash Out")["temperature"] == 78
+    )
+    assert profile["steps"][-1]["temperature"] == 20
 
 
 async def test_generate_profile_gives_up_after_second_failure(install_llm):
@@ -998,93 +1067,24 @@ async def test_generate_profile_rejects_forbidden_enums(install_llm):
             }
         )
 
-    install_llm([_message(_profile(freerise_step))], [_message(_profile(gravity_alert_step))])
+    invalid_spec = {**_VALID_RECIPE_SPEC, "steps": [freerise_step, gravity_alert_step]}
+    install_llm(
+        [_recipe_spec_message(invalid_spec)],
+        [_recipe_spec_message(invalid_spec)],
+    )
     with pytest.raises(ValueError, match="Модель не смогла собрать корректный профиль"):
         await generate_profile("Собери профиль с неверными enum")
 
 
 async def test_generate_profile_repairs_missing_alert_text(install_llm):
-    def _target(name, order, temperature, length, alerts):
-        return {
-            "id": None,
-            "name": name,
-            "order": order,
-            "controlType": "Target",
-            "endType": "Duration" if length is not None else "Manual",
-            "durationType": "Temperature" if length is not None else "Manual",
-            "operator": None,
-            "length": length,
-            "temperature": temperature,
-            "minTemperature": None,
-            "maxTemperature": None,
-            "gravity": None,
-            "pumpEnabled": None,
-            "pumpUtilisation": None,
-            "heatingUtilisation": None,
-            "pidEnabled": None,
-            "sensorDifferential": None,
-            "alerts": alerts,
-        }
-
-    empty_alert_profile = {
-        "name": "Alert text test",
-        "description": "Короткое summary рецепта",
-        "public": False,
-        "profile_type_id": None,
-        "profile_type_name": None,
-        "steps": [
-            _target("Mash In", 0, 67, None, []),
-            _target("Mash Out", 1, 78, 600, []),
-            _target("Sparge", 2, 78, None, []),
-            _target(
-                "Boil",
-                3,
-                100,
-                3600,
-                [
-                    {
-                        "id": None,
-                        "alertText": "",
-                        "trigger": "Duration",
-                        "operator": None,
-                        "temperature": None,
-                        "gravity": None,
-                        "length": 2700,
-                    }
-                ],
-            ),
-            {
-                "id": None,
-                "name": "Cooling",
-                "order": 4,
-                "controlType": "Target",
-                "endType": "Temperature",
-                "durationType": "Temperature",
-                "operator": None,
-                "length": None,
-                "temperature": 20,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [],
-            },
-        ],
-        "alerts": [],
-    }
-
+    invalid_spec = {**_VALID_RECIPE_SPEC, "mash_in_alert_text": ""}
     factory = install_llm(
-        [_message(json.dumps(empty_alert_profile))],
-        [_message(_VALID_SEMANTIC_VALIDATION)],
-        [_message(_VALID_WIZARD_JSON)],
+        [_recipe_spec_message(invalid_spec)],
+        [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     profile = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
 
     assert profile["steps"][4]["alerts"][0]["alertText"]
-    retry_message = factory.requests[2]["messages"][-1]["content"]
-    assert "clear non-empty alertText in the user's language" in retry_message
+    retry_message = factory.requests[1]["messages"][-1]["content"]
+    assert "String should have at least 1 character" in retry_message
