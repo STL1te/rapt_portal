@@ -1706,6 +1706,52 @@ th {
   margin: 4px 0 0;
 }
 
+.recipe-wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recipe-wizard-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.recipe-wizard-title i {
+  margin-right: 8px;
+  color: var(--accent);
+}
+
+.recipe-wizard-text {
+  margin: 0;
+  color: var(--muted);
+}
+
+.recipe-wizard-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recipe-wizard-actions button:not(.btn-solid) {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.recipe-wizard-actions button:not(.btn-solid):hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.recipe-wizard-actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 /* pill toggle group — RAPT's "Automation Type" selector */
 .pill-group {
   display: flex;
@@ -2040,4 +2086,10 @@ th {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+@media (max-width: 800px) {
+  .recipe-wizard-actions .btn-solid {
+    flex: 1 1 220px;
+  }
 }

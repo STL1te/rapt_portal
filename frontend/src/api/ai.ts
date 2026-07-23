@@ -1,4 +1,5 @@
 import type { AiConversation, AiSubjectType, AiTurn } from '@/types'
+import type { ProfileInput } from '@/types'
 import { post } from './client'
 
 export const openAiConversation = (
@@ -17,3 +18,6 @@ export const sendAiMessage = (conversationId: string, content: string, signal?: 
 
 export const resetAiConversation = (conversationId: string, signal?: AbortSignal) =>
   post<AiConversation>(`/api/ai/conversations/${conversationId}/reset`, undefined, { signal })
+
+export const generateProfile = (description: string, signal?: AbortSignal) =>
+  post<ProfileInput>('/api/ai/recipe-wizard', { description }, { signal })

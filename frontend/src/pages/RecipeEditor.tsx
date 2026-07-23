@@ -1,7 +1,7 @@
 import { type DragEvent, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
+import { createProfile, generateProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
 import { CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
 import type {
   AlertTrigger,
@@ -157,7 +157,7 @@ function blankStep(order: number): EditStep {
     order,
     controlType: 'Target',
     endType: 'Duration',
-    durationType: 'Start', // required by RAPT
+    durationType: 'Temperature',
     operator: null,
     length: null,
     temperature: null,
@@ -384,9 +384,15 @@ function StepModal({
             <span>Тип шага</span>
             <select
               value={draft.controlType ?? ''}
-              onChange={(e) =>
-                onChange({ controlType: (e.target.value || null) as ProfileStep['controlType'] })
-              }
+              onChange={(e) => {
+                const controlType = (e.target.value || null) as ProfileStep['controlType']
+                onChange({
+                  controlType,
+                  ...(draft.endType === 'Duration'
+                    ? { durationType: controlType === 'Ramp' ? 'Start' : 'Temperature' }
+                    : {}),
+                })
+              }}
             >
               {controlOptions.map((c) => (
                 <option key={c} value={c}>
@@ -433,9 +439,15 @@ function StepModal({
             <span>Переход к следующему шагу</span>
             <select
               value={draft.endType ?? ''}
-              onChange={(e) =>
-                onChange({ endType: (e.target.value || null) as ProfileStep['endType'] })
-              }
+              onChange={(e) => {
+                const endType = (e.target.value || null) as ProfileStep['endType']
+                onChange({
+                  endType,
+                  ...(endType === 'Duration'
+                    ? { durationType: draft.controlType === 'Ramp' ? 'Start' : 'Temperature' }
+                    : {}),
+                })
+              }}
             >
               {endTypesFor(kind).map((c) => (
                 <option key={c} value={c}>
@@ -629,6 +641,9 @@ export default function RecipeEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardDescription, setWizardDescription] = useState('')
+  const [wizardLoading, setWizardLoading] = useState(false)
   const markDirty = () => setDirty(true)
 
   // selected profile type drives the whole form shape (steps vs Pill alerts, etc.)
@@ -674,7 +689,25 @@ export default function RecipeEditor() {
     if (!isEdit && !typeId && types?.length) setTypeId(types[0].id)
   }, [isEdit, typeId, types])
 
+  useEffect(() => {
+    if (kind !== 'brewzilla') setWizardOpen(false)
+  }, [kind])
+
   const reindex = (s: EditStep[]) => s.map((st, idx) => ({ ...st, order: idx }))
+
+  const applyGeneratedProfile = (profile: ProfileInput) => {
+    const nextSteps = profile.steps
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((step, order) => ({ ...step, order, _uid: uid() }))
+
+    setName(profile.name ?? '')
+    setDescription(profile.description ?? '')
+    setSteps(nextSteps)
+    setAlerts(profile.alerts)
+    setEditing(null)
+    markDirty()
+  }
 
   // open a step in the modal, editing a draft copy so Отмена discards changes
   const openStep = (st: EditStep) =>
@@ -746,6 +779,35 @@ export default function RecipeEditor() {
     })
   }
 
+  const hasFormData =
+    name.trim() !== '' || description.trim() !== '' || steps.length > 0 || alerts.length > 0
+
+  async function submitWizard() {
+    setError(null)
+    const trimmedDescription = wizardDescription.trim()
+    if (trimmedDescription.length < 8) {
+      setError('Опишите варку минимум в 8 символах')
+      return
+    }
+    if (
+      hasFormData &&
+      !window.confirm('Успешный результат мастера заменит текущие поля формы. Продолжить?')
+    ) {
+      return
+    }
+
+    setWizardLoading(true)
+    try {
+      const profile = await generateProfile(trimmedDescription)
+      applyGeneratedProfile(profile)
+      setWizardOpen(false)
+    } catch {
+      setError('Не удалось собрать профиль через AI-мастер')
+    } finally {
+      setWizardLoading(false)
+    }
+  }
+
   async function save() {
     setError(null)
     if (name.trim().length < 4) return setError('Название рецепта: от 4 до 50 символов')
@@ -800,7 +862,53 @@ export default function RecipeEditor() {
           <h2>{isEdit ? 'Редактирование рецепта' : 'Новый рецепт'}</h2>
           <p className="editor-subtitle">Пошаговый профиль управления температурой для брожения.</p>
         </div>
+        {!isEdit && kind === 'brewzilla' ? (
+          <div className="page-head-actions">
+            <button
+              type="button"
+              onClick={() => setWizardOpen((open) => !open)}
+              disabled={wizardLoading}
+            >
+              <i className="fa-solid fa-wand-magic-sparkles" /> AI-мастер
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {wizardOpen ? (
+        <section className="panel recipe-wizard-panel">
+          <h3 className="recipe-wizard-title">
+            <i className="fa-solid fa-wand-magic-sparkles" /> Собрать профиль с AI
+          </h3>
+          <p className="recipe-wizard-text">
+            Опишите варку обычным текстом. Результат заполнит форму и не сохранится сам.
+          </p>
+          {error ? <p className="error">{error}</p> : null}
+          <label className="field">
+            <span>Описание варки</span>
+            <textarea
+              rows={6}
+              placeholder="Американский pale ale, 23 литра. Одноступенчатое затирание 67 °C 60 минут, mash-out 78 °C 10 минут, кип 60 минут. Алерт на добавление хмеля за 15 минут до конца кипа."
+              value={wizardDescription}
+              disabled={wizardLoading}
+              onChange={(e) => setWizardDescription(e.target.value)}
+            />
+          </label>
+          <div className="recipe-wizard-actions">
+            <button type="button" disabled={wizardLoading} onClick={() => setWizardOpen(false)}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="btn-solid"
+              disabled={wizardLoading}
+              onClick={() => void submitWizard()}
+            >
+              {wizardLoading ? 'Собираем…' : 'Собрать профиль'}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel">
         <h3 className="panel-title">Тип профиля</h3>
@@ -811,6 +919,7 @@ export default function RecipeEditor() {
               type="button"
               aria-pressed={typeId === t.id}
               className={`pill${typeId === t.id ? ' active' : ''}`}
+              disabled={wizardLoading}
               onClick={() => {
                 markDirty()
                 setTypeId(t.id)
@@ -984,13 +1093,12 @@ export default function RecipeEditor() {
       ) : null}
 
       <div className="editor-actions">
+        {!wizardOpen && error ? <p className="error">{error}</p> : null}
         {issues.length > 0 ? (
           <div className="info-banner">
             <i className="fa-solid fa-circle-info" />
             Сохранение недоступно: {issues.join('; ')}.
           </div>
-        ) : error ? (
-          <p className="error">{error}</p>
         ) : null}
         <div className="editor-actions-row">
           <button

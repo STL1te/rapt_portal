@@ -7,7 +7,12 @@ from fastapi import APIRouter, HTTPException
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
-from .services import open_conversation, reset_conversation, send_conversation_message
+from .services import (
+    generate_profile,
+    open_conversation,
+    reset_conversation,
+    send_conversation_message,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,6 +25,10 @@ class OpenConversationRequest(BaseModel):
 
 class ConversationMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
+
+
+class RecipeWizardRequest(BaseModel):
+    description: str = Field(min_length=8, max_length=4000)
 
 
 def _raise_ai_error(error: Exception) -> None:
@@ -63,5 +72,15 @@ async def reset_conversation_endpoint(conversation_id: str) -> dict:
         return await reset_conversation(conversation_id)
     except LookupError as error:
         raise HTTPException(404, "AI conversation not found") from error
+    except (APIConnectionError, OpenAIError) as error:
+        _raise_ai_error(error)
+
+
+@router.post("/api/ai/recipe-wizard")
+async def recipe_wizard_endpoint(request: RecipeWizardRequest) -> dict:
+    try:
+        return await generate_profile(request.description)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
     except (APIConnectionError, OpenAIError) as error:
         _raise_ai_error(error)
