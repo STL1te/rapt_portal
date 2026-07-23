@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
 RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
+_VALIDATOR_MAX_RESPONSE_CHARS = 50_000
+_VALIDATOR_MAX_TOKENS = 16_384
+_VALIDATOR_PREVIEW_CHARS = 300
 
 
 class _SpecModel(BaseModel):
@@ -30,16 +33,33 @@ class RestSpec(_SpecModel):
         min_length=STEP_NAME_MIN_LEN,
         max_length=STEP_NAME_MAX_LEN,
     )
-    temperature_c: float = Field(allow_inf_nan=False)
-    duration_seconds: int = Field(gt=0)
+    temperature_c: float = Field(allow_inf_nan=False, description="Mash/rest target in Celsius.")
+    duration_seconds: int = Field(
+        gt=0,
+        description=(
+            "Required rest duration in whole seconds. Do not omit or guess it. "
+            "For text meaning '45 °C for 15 minutes', use 900."
+        ),
+    )
     temperature_alert_text: str | None = Field(default=None, min_length=1)
     end_alert_text: str | None = Field(default=None, min_length=1)
 
 
 class BoilAdditionSpec(_SpecModel):
     text: str = Field(min_length=1, max_length=500)
-    timing_reference: Literal["from_start", "before_end"]
-    offset_seconds: int = Field(ge=0)
+    timing_reference: Literal["from_start", "before_end"] = Field(
+        description=(
+            "Use before_end for additions that should boil for the final N minutes, "
+            "including recipe lines meaning 'boil for N minutes'."
+        )
+    )
+    offset_seconds: int = Field(
+        ge=0,
+        description=(
+            "Required timing offset in seconds. Do not omit it. For text meaning "
+            "'boil for 5 minutes', use 300 with timing_reference=before_end."
+        ),
+    )
 
 
 class RecipeSpec(_SpecModel):
@@ -96,6 +116,13 @@ _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
         },
     },
 }
+
+
+def _preview(raw: str) -> str:
+    compact = " ".join(raw.split())
+    if len(compact) > _VALIDATOR_PREVIEW_CHARS:
+        compact = f"{compact[:_VALIDATOR_PREVIEW_CHARS]}..."
+    return compact
 
 
 def _recipe_wizard_messages(description: str, correction: str | None = None) -> list[dict]:
@@ -387,8 +414,39 @@ def compile_recipe(spec: RecipeSpec) -> dict:
     return profile.model_dump()
 
 
-async def _semantic_profile_errors(description: str, profile: dict) -> list[str]:
-    raw = await _run_chat_completion(
+def _parse_semantic_validation(raw: str) -> list[str]:
+    if len(raw) > _VALIDATOR_MAX_RESPONSE_CHARS:
+        raise ValueError(
+            f"semantic validator response was too long: {len(raw)} chars; preview={_preview(raw)!r}"
+        )
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"semantic validator returned invalid JSON: preview={_preview(raw)!r}"
+        ) from error
+    if not isinstance(result, dict):
+        raise ValueError(
+            f"semantic validator returned non-object JSON: {type(result).__name__}; "
+            f"preview={_preview(raw)!r}"
+        )
+    valid = result.get("valid")
+    errors = result.get("errors")
+    if (
+        not isinstance(valid, bool)
+        or not isinstance(errors, list)
+        or any(not isinstance(error, str) or not error.strip() for error in errors)
+        or valid == bool(errors)
+    ):
+        raise ValueError(
+            f"semantic validator returned invalid shape: valid={valid!r}, errors={errors!r}; "
+            f"preview={_preview(raw)!r}"
+        )
+    return [error.strip() for error in errors]
+
+
+async def _run_semantic_validator(description: str, profile: dict) -> str:
+    return await _run_chat_completion(
         [
             {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
             {
@@ -404,20 +462,24 @@ async def _semantic_profile_errors(description: str, profile: dict) -> list[str]
         current_session_id=None,
         temperature=0,
         response_format=_RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
+        max_tokens=_VALIDATOR_MAX_TOKENS,
     )
-    result = json.loads(raw)
-    if not isinstance(result, dict):
-        raise ValueError("semantic validator returned an invalid result")
-    valid = result.get("valid")
-    errors = result.get("errors")
-    if (
-        not isinstance(valid, bool)
-        or not isinstance(errors, list)
-        or any(not isinstance(error, str) or not error.strip() for error in errors)
-        or valid == bool(errors)
-    ):
-        raise ValueError("semantic validator returned an invalid result")
-    return [error.strip() for error in errors]
+
+
+async def _semantic_profile_errors(description: str, profile: dict) -> list[str]:
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            return _parse_semantic_validation(await _run_semantic_validator(description, profile))
+        except (json.JSONDecodeError, ValueError) as error:
+            last_error = error
+            if attempt == 0:
+                logger.warning("Recipe wizard semantic validator failed once: %s", error)
+            else:
+                logger.warning("Recipe wizard semantic validator failed twice: %s", error)
+    raise ValueError(
+        f"semantic validator returned an invalid result twice: {last_error}"
+    ) from last_error
 
 
 async def _generate_once(

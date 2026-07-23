@@ -9,6 +9,10 @@ Compare the candidate against every explicit fact in the source description:
 - ingredient names, amounts, and timing preserved in alertText;
 - generated text language matching the source language, except required English service-step names.
 
+Cooling is controlled by target temperature, not by a reliable duration. Do not require the
+Cooling step to preserve an explicit cooling duration as `length`; `length=null` is valid for
+Cooling when the target temperature is preserved.
+
 Require a Boil alert only for an ingredient explicitly assigned a boil time. Yeast and other
 post-boil or fermentation ingredients without boil timing must not become Boil alerts.
 

@@ -479,6 +479,7 @@ async def _run_chat_completion(
     current_session_id: str | None,
     temperature: float,
     response_format: dict | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     request: dict = {
         "model": LLM_MODEL,
@@ -488,6 +489,8 @@ async def _run_chat_completion(
     }
     if response_format is not None:
         request["response_format"] = response_format
+    if max_tokens is not None:
+        request["max_tokens"] = max_tokens
     if tools:
         request["tools"] = tools
         request["tool_choice"] = "auto"

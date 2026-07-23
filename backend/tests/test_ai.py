@@ -737,16 +737,69 @@ async def test_generate_profile_happy_path(install_llm):
     assert "boil_additions" in schema["properties"]
     assert "include_sparge" in schema["properties"]
     assert "include_mash_out" in schema["properties"]
+    rest_schema = schema["$defs"]["RestSpec"]["properties"]
+    assert "Do not omit or guess" in rest_schema["duration_seconds"]["description"]
+    assert "45 °C for 15 minutes" in rest_schema["duration_seconds"]["description"]
+    addition_schema = schema["$defs"]["BoilAdditionSpec"]["properties"]
+    assert "boil for N minutes" in addition_schema["timing_reference"]["description"]
+    assert "Do not omit" in addition_schema["offset_seconds"]["description"]
+    assert "boil for 5 minutes" in addition_schema["offset_seconds"]["description"]
     assert "pump_enabled" not in schema["properties"]
     assert "pump_utilisation_pct" not in schema["properties"]
     wizard_system = request["messages"][0]["content"]
     assert "submit_recipe_spec" in wizard_system
     assert "Do not return prose or construct low-level profile steps" in wizard_system
+    assert "tool schema is authoritative" in wizard_system
+    assert "Never submit partial objects" in wizard_system
+    assert "45 °C for 15 minutes" in wizard_system
+    assert "Never submit a boil addition with missing timing fields" in wizard_system
+    assert "boil for N minutes" in wizard_system
     semantic_request = factory.requests[1]
     assert semantic_request["response_format"]["json_schema"]["name"] == "recipe_wizard_validation"
+    assert semantic_request["max_tokens"] == 16_384
     assert "<source_description>" in semantic_request["messages"][1]["content"]
     assert "<candidate_profile>" in semantic_request["messages"][1]["content"]
     assert "Yeast and other" in semantic_request["messages"][0]["content"]
+
+
+async def test_generate_profile_retries_broken_semantic_validator_without_repair(install_llm):
+    factory = install_llm(
+        [_recipe_spec_message()],
+        [_message("not json " * 1000)],
+        [_message(_VALID_SEMANTIC_VALIDATION)],
+    )
+    stages: list[str] = []
+    profile = await generate_profile("Кип 60 минут", stages.append)
+
+    assert profile["steps"][-1]["name"] == "Cooling"
+    assert stages == ["generating", "checking_structure", "checking_recipe"]
+    assert len(factory.requests) == 3
+    assert factory.requests[1]["max_tokens"] == 16_384
+    assert factory.requests[2]["max_tokens"] == 16_384
+
+
+async def test_generate_profile_logs_broken_semantic_validator_reason(install_llm, caplog):
+    install_llm(
+        [_recipe_spec_message()],
+        [_message("not json " * 1000)],
+        [_message('{"valid":true,"errors":["contradiction"]}')],
+        [_recipe_spec_message()],
+        [_message("[]")],
+        [_message('{"valid":true,"errors":["still bad"]}')],
+    )
+
+    with pytest.raises(ValueError) as error:
+        await generate_profile("Кип 60 минут")
+
+    assert str(error.value) == "Модель не смогла собрать корректный профиль"
+    cause = error.value.__cause__
+    assert cause is not None
+    assert "invalid result twice" in str(cause)
+    assert "invalid shape" in str(cause)
+    assert "still bad" in str(cause)
+    assert "not json" in caplog.text
+    assert "non-object JSON" in caplog.text
+    assert "contradiction" in caplog.text
 
 
 async def test_recipe_wizard_stream_emits_progress(install_llm):
