@@ -366,8 +366,6 @@ _VALID_RECIPE_SPEC = {
     "heat_power_pct": None,
     "rest_power_pct": None,
     "mash_pid_enabled": False,
-    "pump_enabled": None,
-    "pump_utilisation_pct": None,
     "mash_out_duration_seconds": 600,
     "boil_temperature_c": 100,
     "boil_duration_seconds": 3600,
@@ -738,6 +736,8 @@ async def test_generate_profile_happy_path(install_llm):
     assert "boil_additions" in schema["properties"]
     assert "include_sparge" in schema["properties"]
     assert "include_mash_out" in schema["properties"]
+    assert "pump_enabled" not in schema["properties"]
+    assert "pump_utilisation_pct" not in schema["properties"]
     wizard_system = request["messages"][0]["content"]
     assert "submit_recipe_spec" in wizard_system
     assert "Do not return prose or construct low-level profile steps" in wizard_system
@@ -1046,6 +1046,11 @@ def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
     assert all(any(alert["trigger"] == "StepEnd" for alert in step["alerts"]) for step in rests)
     sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
     assert sparge["alerts"][0]["trigger"] == "StepStart"
+    assert sparge["heatingUtilisation"] == 0
+    assert sparge["pidEnabled"] is False
+    assert all(
+        step["pumpEnabled"] is None and step["pumpUtilisation"] is None for step in profile["steps"]
+    )
 
 
 def test_compile_recipe_honors_disabled_setup_features():

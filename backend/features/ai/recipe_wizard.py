@@ -50,8 +50,6 @@ class RecipeSpec(_SpecModel):
     heat_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     rest_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     mash_pid_enabled: bool = False
-    pump_enabled: bool | None = None
-    pump_utilisation_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     mash_out_duration_seconds: int = Field(default=600, gt=0)
     mash_out_end_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
     sparge_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
@@ -155,8 +153,6 @@ def _step(
     length: int | None,
     heating: float | None,
     pid: bool | None,
-    pump_enabled: bool | None,
-    pump_utilisation: float | None,
     alerts: list[dict] | None = None,
 ) -> dict:
     return {
@@ -172,8 +168,8 @@ def _step(
         "minTemperature": None,
         "maxTemperature": None,
         "gravity": None,
-        "pumpEnabled": pump_enabled,
-        "pumpUtilisation": pump_utilisation,
+        "pumpEnabled": None,
+        "pumpUtilisation": None,
         "heatingUtilisation": heating,
         "pidEnabled": pid,
         "sensorDifferential": None,
@@ -220,8 +216,6 @@ def _append_rest(
                 length=None,
                 heating=spec.heat_power_pct,
                 pid=False,
-                pump_enabled=spec.pump_enabled,
-                pump_utilisation=spec.pump_utilisation_pct,
                 alerts=temperature_alerts,
             )
         )
@@ -235,8 +229,6 @@ def _append_rest(
             length=rest.duration_seconds,
             heating=spec.rest_power_pct,
             pid=spec.mash_pid_enabled,
-            pump_enabled=spec.pump_enabled,
-            pump_utilisation=spec.pump_utilisation_pct,
             alerts=[*temperature_alerts, *_end_alerts(rest)],
         )
     )
@@ -310,8 +302,6 @@ def compile_recipe(spec: RecipeSpec) -> dict:
             length=None,
             heating=spec.heat_power_pct,
             pid=False,
-            pump_enabled=spec.pump_enabled,
-            pump_utilisation=spec.pump_utilisation_pct,
             alerts=mash_in_alerts,
         )
     ]
@@ -338,8 +328,6 @@ def compile_recipe(spec: RecipeSpec) -> dict:
                     length=None,
                     heating=spec.heat_power_pct,
                     pid=False,
-                    pump_enabled=spec.pump_enabled,
-                    pump_utilisation=spec.pump_utilisation_pct,
                 )
             )
         steps.append(
@@ -349,10 +337,8 @@ def compile_recipe(spec: RecipeSpec) -> dict:
                 end_type="Manual",
                 duration_type="Manual",
                 length=None,
-                heating=spec.rest_power_pct,
-                pid=spec.mash_pid_enabled,
-                pump_enabled=spec.pump_enabled,
-                pump_utilisation=spec.pump_utilisation_pct,
+                heating=0,
+                pid=False,
                 alerts=(
                     [_alert(spec.sparge_alert_text, "StepStart")] if spec.sparge_alert_text else []
                 ),
@@ -367,8 +353,6 @@ def compile_recipe(spec: RecipeSpec) -> dict:
             length=spec.boil_duration_seconds,
             heating=spec.heat_power_pct,
             pid=False,
-            pump_enabled=spec.pump_enabled,
-            pump_utilisation=spec.pump_utilisation_pct,
             alerts=_boil_alerts(spec),
         )
     )
@@ -383,8 +367,6 @@ def compile_recipe(spec: RecipeSpec) -> dict:
             length=None,
             heating=0,
             pid=False,
-            pump_enabled=spec.pump_enabled,
-            pump_utilisation=spec.pump_utilisation_pct,
         )
     )
 
