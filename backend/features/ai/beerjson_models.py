@@ -23,7 +23,7 @@ class MassType(_BJ):
 
 
 class VolumeType(_BJ):
-    unit: Literal["ml", "l", "floz", "pt", "qt", "gal"]
+    unit: Literal["ml", "l", "tsp", "tbsp", "floz", "cup", "pt", "qt", "gal", "bbl"]
     value: float = Field(gt=0, allow_inf_nan=False)
 
 

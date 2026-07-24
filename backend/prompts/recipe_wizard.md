@@ -84,13 +84,17 @@ order is rejected):
   extracts, sugars, fruit, honey), `hop_additions`, `culture_additions` (yeast and
   bacteria), `miscellaneous_additions` (spices, finings, water agents, zest, and other
   additions). Preserve stated color, yield/extract, alpha acid, hop form, and yeast
-  type/form.
+  type/form. The yeast is often named only in the process text ("Ferment with X",
+  "Брожение: X") and not in the ingredient list — always include it as a culture
+  addition anyway.
 - Timing semantics: `timing.duration` is contact time - "boil the hops for 40 minutes"
   means `{"use": "add_to_boil", "duration": {"unit": "min", "value": 40}}`. A stated
   boil time for an ingredient is ALWAYS `duration`, never `time`. `timing.time` is the
   moment of addition measured from the start of the referenced process - "add 15
   minutes after the boil starts" means `{"use": "add_to_boil", "time": {"unit": "min",
   "value": 15}}`. Dry hopping and fermentation additions use `add_to_fermentation`.
+  `use` has no sparge value: additions to sparge/rinse water ("внесение в промывную
+  воду") use `add_to_mash`.
 - Mash: every rest that has BOTH an explicit temperature and an explicit duration
   becomes one entry of `recipe.mash.mash_steps` with `step_temperature` and
   `step_time`. Omit rests missing either value. Keep a stated final mash-out rest as
@@ -99,7 +103,8 @@ order is rejected):
 - Boil: put the total boil length in `recipe.boil.boil_time`. `boil_steps` is
   positional with at most two entries: index 0 is the boil itself (optional), index 1
   is the whirlpool/hopstand when the source has one, with its `step_time` (required)
-  and `start_temperature` (when stated). A whirlpool addition gets
+  and `start_temperature` (when stated). A stated whirlpool/settling time of 0 means
+  there is no whirlpool: omit the entry. A whirlpool addition gets
   `timing = {"use": "add_to_boil", "time": <boil_time>}` plus its contact `duration`
   when stated.
 - Fermentation: when the source states fermentation temperature or duration, add

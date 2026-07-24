@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import random
+import re
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -14,6 +15,8 @@ from features.ai.router import RecipeWizardRequest
 
 
 def _source(row: dict) -> str:
+    if "BrewMethod" in row:  # Brewer's Friend (English) corpus
+        return _source_en(row)
     header = (
         f"Название: {row['name']}\n"
         f"Стиль: {row['style_full']}\n"
@@ -23,11 +26,73 @@ def _source(row: dict) -> str:
     return f"{header}{row['full_description']}"
 
 
-def _select(rows: list[dict], count: int, seed: int | None) -> list[tuple[int, dict]]:
-    """First `count` rows in corpus order, so --count N is a prefix and larger counts
-    are supersets. With --shuffle SEED, rows are shuffled by seed first: same seed stays
-    nested and resumable, a different seed draws a different subset."""
-    ordered = list(enumerate(rows))
+_EN_HEADER_FIELDS = (
+    ("Style", "Style"),
+    ("BrewMethod", "Method"),
+    ("Size(L)", "Batch Size (L)"),
+    ("BoilSize", "Boil Size (L)"),
+    ("BoilTime", "Boil Time (min)"),
+    ("OG", "OG"),
+    ("FG", "FG"),
+    ("ABV", "ABV %"),
+    ("IBU", "IBU"),
+    ("Color", "Color (SRM)"),
+    ("Efficiency", "Efficiency %"),
+    ("SugarScale", "Sugar Scale"),
+    ("MashThickness", "Mash Thickness"),
+    ("PrimaryTemp", "Primary Temp (C)"),
+    ("PitchRate", "Pitch Rate"),
+    ("PrimingMethod", "Priming Method"),
+    ("PrimingAmount", "Priming Amount"),
+)
+
+
+def _source_en(row: dict) -> str:
+    lines = [f"Name: {row['Name']}"]
+    lines += [
+        f"{label}: {row[key]}"
+        for key, label in _EN_HEADER_FIELDS
+        if row.get(key) not in (None, "", "N/A")
+    ]
+    lines.append("Ingredients:")
+    lines += [f"- {item}" for item in row["ingredients"]]
+    lines += [part for part in row.get("instructions") or [] if part]
+    if row.get("notes"):
+        lines.append(row["notes"])
+    return "\n".join(lines)
+
+
+def _meta(row: dict) -> tuple[str, str]:
+    """(name, type) for the result record, per corpus format."""
+    if "BrewMethod" in row:
+        return row["Name"], row["BrewMethod"]
+    return row["name"], row["type"]
+
+
+def _is_grain(row: dict) -> bool:
+    if "BrewMethod" in row:
+        return row["BrewMethod"] in ("All Grain", "BIAB")
+    return row["type"] == "Зерновой"
+
+
+def _has_mash_info(row: dict) -> bool:
+    """Brewer's Friend authors often leave the mash process empty; such grain rows are
+    doomed by construction (the compiler requires a mash, the validator forbids an
+    invented one), so skip them before spending LLM calls.
+    ponytail: regex heuristic, validated on a 500-row run (drops 90/101 doomed rows,
+    loses 5/330 good ones); tune the pattern if the loss rate grows."""
+    if "BrewMethod" not in row:
+        return True
+    return bool(re.search(r"(?is)mash(?! thickness)[^|]{0,60}?\d", _source_en(row)))
+
+
+def _select(
+    pairs: list[tuple[int, dict]], count: int, seed: int | None
+) -> list[tuple[int, dict]]:
+    """First `count` (index, row) pairs in corpus order, so --count N is a prefix and
+    larger counts are supersets. With --shuffle SEED, pairs are shuffled by seed first:
+    same seed stays nested and resumable, a different seed draws a different subset."""
+    ordered = list(pairs)
     if seed is not None:
         random.Random(seed).shuffle(ordered)
     return ordered[:count]
@@ -40,9 +105,11 @@ def _load_results(path: Path) -> dict[int, dict]:
     """Existing results keyed by corpus index (last line wins per index)."""
     if not path.exists():
         return {}
+    # split("\n"), not splitlines(): JSON strings may legally contain raw U+2028/U+2029,
+    # which splitlines() treats as line breaks, tearing lines apart mid-string.
     return {
         result["index"]: result
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").split("\n")
         if line.strip()
         for result in [json.loads(line)]
     }
@@ -66,24 +133,45 @@ async def main() -> None:
     parser.add_argument("--indices", type=int, nargs="*")
     parser.add_argument("--shuffle", type=int, metavar="SEED", help="draw a random subset")
     parser.add_argument("--timeout", type=float, default=300)
+    parser.add_argument(
+        "--skip-errors",
+        action="store_true",
+        help="don't retry rows already recorded as status=error (e.g. structurally broken recipes)",
+    )
     args = parser.parse_args()
 
     rows = [
         json.loads(line)
-        for line in args.corpus.read_text(encoding="utf-8").splitlines()
+        for line in args.corpus.read_text(encoding="utf-8").split("\n")
         if line.strip()
     ]
+    # Corpus indices stay stable across runs (stored as "index" in the output and used
+    # for resume/--skip-errors), so filter by type without renumbering.
+    grain_pairs = [(index, row) for index, row in enumerate(rows) if _is_grain(row)]
     selected = (
         [(index, rows[index]) for index in args.indices]
         if args.indices
-        else _select(rows, args.count, args.shuffle)
+        else _select(grain_pairs, args.count, args.shuffle)
     )
     results = _load_results(args.output)
-    ready = {index for index, result in results.items() if result["status"] in _READY}
-    pending = [(index, row) for index, row in selected if index not in ready]
+    ready_statuses = _READY + ("error",) if args.skip_errors else _READY
+    ready = {index for index, result in results.items() if result["status"] in ready_statuses}
+    # Explicit --indices bypass the mash prefilter: an explicit request wins.
+    pending = [
+        (index, row)
+        for index, row in selected
+        if index not in ready and (args.indices or _has_mash_info(row))
+    ]
     skipped = len(selected) - len(pending)
     if skipped:
-        print(f"resuming: {skipped}/{len(selected)} already ready, {len(pending)} to run", flush=True)
+        no_mash = 0 if args.indices else sum(
+            1 for index, row in selected if index not in ready and not _has_mash_info(row)
+        )
+        print(
+            f"resuming: {skipped - no_mash}/{len(selected)} already ready, "
+            f"{no_mash} prefiltered (no mash info), {len(pending)} to run",
+            flush=True,
+        )
 
     semaphore = asyncio.Semaphore(args.concurrency)
     completed = 0
@@ -92,10 +180,11 @@ async def main() -> None:
     async def evaluate(index: int, row: dict) -> None:
         nonlocal completed
         source = _source(row)
+        name, row_type = _meta(row)
         result = {
             "index": index,
-            "name": row["name"],
-            "type": row["type"],
+            "name": name,
+            "type": row_type,
             "source_length": len(source),
             "url": row["url"],
         }

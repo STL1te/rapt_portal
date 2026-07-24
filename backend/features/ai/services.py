@@ -18,6 +18,7 @@ from core.config import (
     LLM_BASE_URL,
     LLM_CHAT_TEMPERATURE,
     LLM_MODEL,
+    LLM_SAMPLING,
     LLM_TEMPERATURE,
     LLM_TIMEOUT_SECONDS,
     LLM_TOP_P,
@@ -486,13 +487,14 @@ async def _run_chat_completion(
     request: dict = {
         "model": model or LLM_MODEL,
         "messages": messages,
-        "temperature": temperature,
-        "top_p": LLM_TOP_P,
     }
+    if LLM_SAMPLING != "none":
+        request["temperature"] = temperature
+        request["top_p"] = LLM_TOP_P
     if response_format is not None:
         request["response_format"] = response_format
     if max_tokens is not None:
-        request["max_tokens"] = max_tokens
+        request["max_completion_tokens" if LLM_SAMPLING == "none" else "max_tokens"] = max_tokens
     if tools:
         request["tools"] = tools
         request["tool_choice"] = "auto"

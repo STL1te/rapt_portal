@@ -13,9 +13,13 @@ fact in the source description:
   yield/extract, alpha acid, form, yeast type) in the matching typed list of
   `candidate.recipe.ingredients`;
 - every mash rest that has both an explicit temperature and an explicit duration, as
-  one `mash_steps` entry; rests missing either value must NOT be present;
+  one `mash_steps` entry; rests missing either value must NOT be present; the
+  instruction template "Mash — Sparge at X° for Y minutes" DOES state one explicit
+  mash rest (temperature X, duration Y) and must be present as one entry;
 - boil length in `boil.boil_time`; the whirlpool, when the source has one, as
-  `boil_steps[1]` with its duration and stated temperature;
+  `boil_steps[1]` with its duration and stated temperature; a stated
+  whirlpool/settling time of 0 means there is no whirlpool and `boil_steps[1]`
+  must be absent (never require it);
 - ingredient timing: a stated "boil for N minutes" must appear as
   `timing.duration = N` with `use="add_to_boil"`, never as `timing.time`; elapsed-time
   wording ("N minutes after the boil starts") must appear as `timing.time = N`; a
@@ -35,6 +39,12 @@ spelling: "Lovi" means °L/Lovibond, "sg" means specific gravity, "l" means lite
 Candidate field names are fixed by the schema (`batch_size`, `efficiency.brewhouse`,
 strike water as `mash_steps[0].amount`); never report a schema-defined field as
 unexpected or misnamed.
+
+`timing.use` has exactly four values: `add_to_mash`, `add_to_boil`,
+`add_to_fermentation`, `add_to_package`. Never demand any other value (there is no
+sparge token); additions to sparge/rinse water are correctly represented as
+`add_to_mash`. When the source states a range ("50–70 ml"), any value inside the
+range is correct.
 
 Do not require fields the source does not provide, and do not report an error because
 an omitted field falls back to an exporter default (mash-out, sparge, boil temperature,
