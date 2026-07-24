@@ -29,9 +29,18 @@ fact in the source description:
 - `recipe.name`, `recipe.notes`, and override alert texts in the source language;
   ingredient names copied character for character.
 
+Unit strings in the candidate are canonical BeerJSON enum tokens, never the source's
+spelling: "Lovi" means °L/Lovibond, "sg" means specific gravity, "l" means liters,
+"C" means °C. Never report a unit mismatch when the token denotes the source's unit.
+Candidate field names are fixed by the schema (`batch_size`, `efficiency.brewhouse`,
+strike water as `mash_steps[0].amount`); never report a schema-defined field as
+unexpected or misnamed.
+
 Do not require fields the source does not provide, and do not report an error because
 an omitted field falls back to an exporter default (mash-out, sparge, boil temperature,
-cooling target, mash-in temperature). Overrides must be absent unless explicitly
+cooling target, mash-in temperature). Never require a source fact the candidate schema
+has no field for (flocculation, IBU, mash pH), and never infer an expected value by
+combining unrelated source statements. Overrides must be absent unless explicitly
 requested. Do not criticize brewing choices the source explicitly makes. Do not reason
 about exporter step ordering, alert triggers, or calculated values; deterministic
 exporters own those.

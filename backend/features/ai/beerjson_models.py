@@ -58,13 +58,16 @@ class ColorType(_BJ):
 
 
 class TimingType(_BJ):
+    # `use` is declared first: llama.cpp grammars force schema property order, and
+    # models naturally emit `use` before time/duration — the reverse order made
+    # constrained decoding silently drop durations.
+    use: Literal["add_to_mash", "add_to_boil", "add_to_fermentation", "add_to_package"] | None = (
+        None
+    )
     time: TimeType | None = None
     duration: TimeType | None = None
     continuous: bool | None = None
     specific_gravity: GravityType | None = None
-    use: Literal["add_to_mash", "add_to_boil", "add_to_fermentation", "add_to_package"] | None = (
-        None
-    )
 
 
 class YieldType(_BJ):

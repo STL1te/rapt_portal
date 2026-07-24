@@ -481,9 +481,10 @@ async def _run_chat_completion(
     temperature: float,
     response_format: dict | None = None,
     max_tokens: int | None = None,
+    model: str | None = None,
 ) -> str:
     request: dict = {
-        "model": LLM_MODEL,
+        "model": model or LLM_MODEL,
         "messages": messages,
         "temperature": temperature,
         "top_p": LLM_TOP_P,

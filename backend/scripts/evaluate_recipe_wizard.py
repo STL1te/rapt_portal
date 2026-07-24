@@ -1,8 +1,9 @@
-"""Run the recipe wizard against a deterministic sample from a JSONL corpus."""
+"""Run the recipe wizard against a prefix (or seeded-random subset) of a JSONL corpus."""
 
 import argparse
 import asyncio
 import json
+import random
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -22,13 +23,29 @@ def _source(row: dict) -> str:
     return f"{header}{row['full_description']}"
 
 
-def _sample(rows: list[dict], count: int) -> list[tuple[int, dict]]:
-    ordered = sorted(enumerate(rows), key=lambda item: len(_source(item[1])))
-    if count >= len(ordered):
-        return ordered
-    if count == 1:
-        return [ordered[len(ordered) // 2]]
-    return [ordered[round(i * (len(ordered) - 1) / (count - 1))] for i in range(count)]
+def _select(rows: list[dict], count: int, seed: int | None) -> list[tuple[int, dict]]:
+    """First `count` rows in corpus order, so --count N is a prefix and larger counts
+    are supersets. With --shuffle SEED, rows are shuffled by seed first: same seed stays
+    nested and resumable, a different seed draws a different subset."""
+    ordered = list(enumerate(rows))
+    if seed is not None:
+        random.Random(seed).shuffle(ordered)
+    return ordered[:count]
+
+
+_READY = ("ok", "ok_repaired")
+
+
+def _load_results(path: Path) -> dict[int, dict]:
+    """Existing results keyed by corpus index (last line wins per index)."""
+    if not path.exists():
+        return {}
+    return {
+        result["index"]: result
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+        for result in [json.loads(line)]
+    }
 
 
 def _error_chain(error: Exception) -> list[str]:
@@ -47,6 +64,7 @@ async def main() -> None:
     parser.add_argument("--count", type=int, default=36)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--indices", type=int, nargs="*")
+    parser.add_argument("--shuffle", type=int, metavar="SEED", help="draw a random subset")
     parser.add_argument("--timeout", type=float, default=300)
     args = parser.parse_args()
 
@@ -58,11 +76,18 @@ async def main() -> None:
     selected = (
         [(index, rows[index]) for index in args.indices]
         if args.indices
-        else _sample(rows, min(args.count, len(rows)))
+        else _select(rows, args.count, args.shuffle)
     )
+    results = _load_results(args.output)
+    ready = {index for index, result in results.items() if result["status"] in _READY}
+    pending = [(index, row) for index, row in selected if index not in ready]
+    skipped = len(selected) - len(pending)
+    if skipped:
+        print(f"resuming: {skipped}/{len(selected)} already ready, {len(pending)} to run", flush=True)
+
     semaphore = asyncio.Semaphore(args.concurrency)
     completed = 0
-    results: list[dict] = []
+    log = args.output.open("a", encoding="utf-8")  # crash-safe append; collapsed at the end
 
     async def evaluate(index: int, row: dict) -> None:
         nonlocal completed
@@ -89,7 +114,7 @@ async def main() -> None:
                     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
                         result["first_errors"] = _error_chain(error)
                         correction = (
-                            "Call submit_recipe again with a complete corrected specification. "
+                            "Return submit_recipe again as one complete corrected JSON object. "
                             "Preserve every explicit source value and the source language. "
                             f"The previous attempt failed:\n{error}"
                         )
@@ -115,19 +140,26 @@ async def main() -> None:
                 )
             except Exception as error:
                 result.update(status="error", errors=_error_chain(error))
-        results.append(result)
+        results[index] = result
+        log.write(json.dumps(result, ensure_ascii=False) + "\n")
+        log.flush()
         completed += 1
-        print(f"{completed}/{len(selected)} {result['status']} index={index}", flush=True)
+        print(f"{completed}/{len(pending)} {result['status']} index={index}", flush=True)
 
-    await asyncio.gather(*(evaluate(index, row) for index, row in selected))
-    results.sort(key=lambda result: result["source_length"])
+    try:
+        await asyncio.gather(*(evaluate(index, row) for index, row in pending))
+    finally:
+        log.close()
+
+    # Collapse the append log (may hold duplicate retried indices) into a clean file.
+    ordered = sorted(results.values(), key=lambda result: result["source_length"])
     args.output.write_text(
-        "".join(json.dumps(result, ensure_ascii=False) + "\n" for result in results),
+        "".join(json.dumps(result, ensure_ascii=False) + "\n" for result in ordered),
         encoding="utf-8",
     )
     counts = {
-        status: sum(result["status"] == status for result in results)
-        for status in sorted({result["status"] for result in results})
+        status: sum(result["status"] == status for result in ordered)
+        for status in sorted({result["status"] for result in ordered})
     }
     print(json.dumps(counts, separators=(",", ":")), flush=True)
 

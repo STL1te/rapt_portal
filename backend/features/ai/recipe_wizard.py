@@ -7,9 +7,8 @@ from collections.abc import Callable
 from openai import BadRequestError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from core.config import LLM_BASE_URL, LLM_MODEL, LLM_RESPONSE_FORMAT, LLM_TOP_P
+from core.config import LLM_BASE_URL, LLM_MODEL, LLM_RESPONSE_FORMAT, LLM_VALIDATOR_MODEL
 
-from . import services as ai_services
 from .beerjson_models import RecipeModel, to_beerjson_document
 from .brewzilla_compiler import compile_brewzilla_profile
 from .brewzilla_overrides import BrewZillaOverrides, merge_overrides
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
 RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
-_VALIDATOR_MAX_TOKENS = 16_384
+_MAX_COMPLETION_TOKENS = 16_384
 _VALIDATOR_PREVIEW_CHARS = 300
 _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
     "type": "json_schema",
@@ -35,7 +34,8 @@ _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
                 "errors": {
                     "type": "array",
                     "maxItems": 20,
-                    "items": {"type": "string", "minLength": 1, "maxLength": 500},
+                    # no string length bounds: llama.cpp grammar conversion fails on them
+                    "items": {"type": "string"},
                 },
             },
             "additionalProperties": False,
@@ -51,15 +51,33 @@ class SubmitRecipe(BaseModel):
     brewzilla_overrides: BrewZillaOverrides | None = None
 
 
-_RECIPE_TOOL = {
-    "type": "function",
-    "function": {
+def _response_schema(schema):
+    """Normalize the Pydantic schema for response_format backends: llama.cpp fails to
+    build a grammar from string length bounds, and OpenAI-style strict mode requires
+    every property to be listed in `required` (optional fields stay nullable) and
+    rejects `default`. Pydantic still enforces the full contract server-side."""
+    if isinstance(schema, dict):
+        cleaned = {
+            key: _response_schema(value)
+            for key, value in schema.items()
+            if key not in ("minLength", "maxLength", "default")
+        }
+        if "properties" in cleaned:
+            cleaned["required"] = list(cleaned["properties"])
+        return cleaned
+    if isinstance(schema, list):
+        return [_response_schema(value) for value in schema]
+    return schema
+
+
+# Local backends (Ollama, LM Studio) enforce response_format with grammar-constrained
+# decoding but do NOT constrain tool-call arguments, so extraction uses response_format.
+_RECIPE_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
         "name": "submit_recipe",
-        "description": (
-            "Submit extracted BeerJSON recipe facts and explicitly requested BrewZilla "
-            "process overrides. Deterministic exporters apply defaults and structure."
-        ),
-        "parameters": SubmitRecipe.model_json_schema(by_alias=True),
+        "strict": True,
+        "schema": _response_schema(SubmitRecipe.model_json_schema(by_alias=True)),
     },
 }
 
@@ -71,9 +89,9 @@ def _preview(raw: str) -> str:
     return compact
 
 
-def _validator_response_formats() -> tuple[tuple[str, dict], ...]:
+def _response_format_fallbacks(schema_format: dict) -> tuple[tuple[str, dict], ...]:
     formats = {
-        "json_schema": ("JSON Schema", _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT),
+        "json_schema": ("JSON Schema", schema_format),
         "json_object": ("JSON mode", _JSON_OBJECT_RESPONSE_FORMAT),
     }
     if LLM_RESPONSE_FORMAT == "auto":
@@ -81,6 +99,62 @@ def _validator_response_formats() -> tuple[tuple[str, dict], ...]:
     if LLM_RESPONSE_FORMAT == "none":
         return ()
     return (formats[LLM_RESPONSE_FORMAT],)
+
+
+def _strip_code_fences(raw: str) -> str:
+    normalized = raw.strip()
+    if normalized.startswith("```"):
+        _, _, normalized = normalized.partition("\n")
+        if normalized.rstrip().endswith("```"):
+            normalized = normalized.rstrip().rsplit("```", 1)[0]
+    return normalized
+
+
+async def _run_json_completion(
+    messages: list[dict],
+    schema_format: dict,
+    *,
+    max_tokens: int | None = None,
+    model: str | None = None,
+) -> str:
+    request = {
+        "tools": None,
+        "current_session_id": None,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "model": model,
+    }
+    response_formats = _response_format_fallbacks(schema_format)
+    for index, (name, response_format) in enumerate(response_formats):
+        try:
+            return await _run_chat_completion(
+                messages,
+                response_format=response_format,
+                **request,
+            )
+        except BadRequestError as error:
+            if "response_format" not in str(error).lower():
+                raise
+            logger.error(error)
+            fallback_available = index < len(response_formats) - 1 or LLM_RESPONSE_FORMAT == "auto"
+            logger.warning(
+                "LLM response format is incompatible: model=%s base_url=%s format=%s status=%s; %s",
+                LLM_MODEL,
+                LLM_BASE_URL,
+                name,
+                error.status_code,
+                "trying the next format" if fallback_available else "no fallback is configured",
+            )
+            if not fallback_available:
+                raise
+    if LLM_RESPONSE_FORMAT == "auto":
+        logger.warning(
+            "LLM supports neither JSON Schema nor JSON mode: model=%s base_url=%s; "
+            "retrying without response_format",
+            LLM_MODEL,
+            LLM_BASE_URL,
+        )
+    return await _run_chat_completion(messages, **request)
 
 
 def _recipe_wizard_messages(description: str, correction: str | None = None) -> list[dict]:
@@ -94,24 +168,15 @@ def _recipe_wizard_messages(description: str, correction: str | None = None) -> 
 
 
 async def _extract_recipe(messages: list[dict]) -> SubmitRecipe:
-    request = {
-        "model": LLM_MODEL,
-        "messages": messages,
-        "temperature": 0,
-        "top_p": LLM_TOP_P,
-        "tools": [_RECIPE_TOOL],
-        "tool_choice": "auto",
-    }
-    async with ai_services._new_llm_client() as client:
-        response = await client.chat.completions.create(**request)
-
-    tool_calls = getattr(response.choices[0].message, "tool_calls", None) or []
-    if len(tool_calls) != 1 or tool_calls[0].function.name != "submit_recipe":
-        raise ValueError("model must call submit_recipe exactly once")
+    raw = await _run_json_completion(
+        messages, _RECIPE_RESPONSE_FORMAT, max_tokens=_MAX_COMPLETION_TOKENS
+    )
     try:
-        arguments = json.loads(tool_calls[0].function.arguments)
+        arguments = json.loads(_strip_code_fences(raw))
     except json.JSONDecodeError as error:
-        raise ValueError("submit_recipe arguments must be valid JSON") from error
+        raise ValueError(
+            f"submit_recipe must be a single valid JSON object: preview={_preview(raw)!r}"
+        ) from error
     return SubmitRecipe.model_validate(arguments)
 
 
@@ -120,13 +185,8 @@ def _parse_semantic_validation(raw: str) -> list[str]:
         raise ValueError(
             f"semantic validator response was too long: {len(raw)} chars; preview={_preview(raw)!r}"
         )
-    normalized = raw.strip()
-    if normalized.startswith("```"):
-        _, _, normalized = normalized.partition("\n")
-        if normalized.rstrip().endswith("```"):
-            normalized = normalized.rstrip().rsplit("```", 1)[0]
     try:
-        result = json.loads(normalized)
+        result = json.loads(_strip_code_fences(raw))
     except json.JSONDecodeError as error:
         raise ValueError(
             f"semantic validator returned invalid JSON: preview={_preview(raw)!r}"
@@ -163,42 +223,12 @@ async def _run_semantic_validator(description: str, submit: SubmitRecipe) -> str
             ),
         },
     ]
-    request = {
-        "tools": None,
-        "current_session_id": None,
-        "temperature": 0,
-        "max_tokens": _VALIDATOR_MAX_TOKENS,
-    }
-    response_formats = _validator_response_formats()
-    for index, (name, response_format) in enumerate(response_formats):
-        try:
-            return await _run_chat_completion(
-                messages,
-                response_format=response_format,
-                **request,
-            )
-        except BadRequestError as error:
-            if "response_format" not in str(error).lower():
-                raise
-            fallback_available = index < len(response_formats) - 1 or LLM_RESPONSE_FORMAT == "auto"
-            logger.warning(
-                "LLM response format is incompatible: model=%s base_url=%s format=%s status=%s; %s",
-                LLM_MODEL,
-                LLM_BASE_URL,
-                name,
-                error.status_code,
-                "trying the next format" if fallback_available else "no fallback is configured",
-            )
-            if not fallback_available:
-                raise
-    if LLM_RESPONSE_FORMAT == "auto":
-        logger.warning(
-            "LLM supports neither JSON Schema nor JSON mode: model=%s base_url=%s; "
-            "retrying semantic validation without response_format",
-            LLM_MODEL,
-            LLM_BASE_URL,
-        )
-    return await _run_chat_completion(messages, **request)
+    return await _run_json_completion(
+        messages,
+        _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
+        max_tokens=_MAX_COMPLETION_TOKENS,
+        model=LLM_VALIDATOR_MODEL,
+    )
 
 
 async def _semantic_recipe_errors(description: str, submit: SubmitRecipe) -> list[str]:
@@ -249,7 +279,7 @@ async def generate_profile(
     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
         on_progress and on_progress("repairing")
         correction = (
-            "Call submit_recipe again with a complete corrected specification. "
+            "Return submit_recipe again as one complete corrected JSON object. "
             "Preserve every explicit source value and the source language. "
             f"The previous attempt failed:\n{error}"
         )

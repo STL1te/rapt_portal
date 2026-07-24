@@ -33,8 +33,8 @@ from features.ai.recipe_wizard import (
     RECIPE_WIZARD_VALIDATOR_PROMPT,
     SubmitRecipe,
     _parse_semantic_validation,
+    _response_format_fallbacks,
     _run_semantic_validator,
-    _validator_response_formats,
     generate_profile,
 )
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
@@ -248,14 +248,7 @@ _VALID_SUBMIT_RECIPE = {
 
 
 def _recipe_message(submit=None):
-    call = SimpleNamespace(
-        id="recipe-call",
-        function=SimpleNamespace(
-            name="submit_recipe",
-            arguments=json.dumps(submit or _VALID_SUBMIT_RECIPE, ensure_ascii=False),
-        ),
-    )
-    return _message(tool_calls=[call])
+    return _message(json.dumps(submit or _VALID_SUBMIT_RECIPE, ensure_ascii=False))
 
 
 # --------------------------------------------------------------------------- #
@@ -320,7 +313,8 @@ def test_semantic_validator_accepts_fenced_json():
 def test_semantic_validator_honors_configured_response_format(monkeypatch):
     monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "json_object")
 
-    assert _validator_response_formats() == (("JSON mode", {"type": "json_object"}),)
+    schema_format = {"type": "json_schema", "json_schema": {"name": "x"}}
+    assert _response_format_fallbacks(schema_format) == (("JSON mode", {"type": "json_object"}),)
 
 
 async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, caplog):
@@ -643,11 +637,17 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     assert recipe["beerjson"]["recipes"][0]["name"] == "APA 23 л"
     request = factory.requests[0]
     assert request["temperature"] == 0
-    assert request["tool_choice"] == "auto"
-    assert len(request["tools"]) == 1
-    tool = request["tools"][0]["function"]
-    assert tool["name"] == "submit_recipe"
-    schema = tool["parameters"]
+    assert "tools" not in request
+    assert request["max_tokens"] == 16_384
+    response_format = request["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "submit_recipe"
+    assert response_format["json_schema"]["strict"] is True
+    schema = response_format["json_schema"]["schema"]
+    assert "minLength" not in json.dumps(schema) and "maxLength" not in json.dumps(schema)
+    assert schema["required"] == ["recipe", "brewzilla_overrides"]
+    recipe_def = schema["$defs"]["RecipeModel"]
+    assert recipe_def["required"] == list(recipe_def["properties"])
     assert schema["additionalProperties"] is False
     assert set(schema["properties"]) == {"recipe", "brewzilla_overrides"}
     defs = schema["$defs"]
@@ -661,7 +661,7 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     wizard_system = request["messages"][0]["content"]
     assert "submit_recipe" in wizard_system
     assert "Do not return prose" in wizard_system
-    assert "tool schema is authoritative" in wizard_system
+    assert "JSON schema is authoritative" in wizard_system
     assert "Never submit partial objects" in wizard_system
     assert "add_to_boil" in wizard_system
     validator_system = RECIPE_WIZARD_VALIDATOR_PROMPT
@@ -684,6 +684,19 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     ]
     assert candidate["brewzilla_overrides"]["mash_in_temperature_c"] == 69
     assert "ingredient names copied character for character" in validator_system
+
+
+async def test_semantic_validator_uses_dedicated_judge_model(install_llm, monkeypatch):
+    monkeypatch.setattr("features.ai.recipe_wizard.LLM_VALIDATOR_MODEL", "judge-model")
+    factory = install_llm(
+        [_recipe_message()],
+        [_message(_VALID_SEMANTIC_VALIDATION)],
+    )
+
+    await generate_profile("Кип 60 минут")
+
+    assert factory.requests[0]["model"] != "judge-model"
+    assert factory.requests[1]["model"] == "judge-model"
 
 
 async def test_generate_profile_applies_user_overrides_over_extracted(install_llm):
