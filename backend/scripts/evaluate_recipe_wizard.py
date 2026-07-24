@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from features.ai.beerjson_models import to_beerjson_document
 from features.ai.recipe_wizard import _generate_once
 from features.ai.router import RecipeWizardRequest
 
@@ -81,24 +82,27 @@ async def main() -> None:
             try:
                 async with semaphore:
                     try:
-                        spec, profile = await asyncio.wait_for(
-                            _generate_once(source, None, None, retry=False),
+                        submit, profile = await asyncio.wait_for(
+                            _generate_once(source, None, None, retry=False, user_overrides=None),
                             timeout=args.timeout,
                         )
                     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
                         result["first_errors"] = _error_chain(error)
                         correction = (
-                            "Call submit_recipe_spec again with a complete corrected "
-                            "specification. Preserve every explicit source value and the source "
-                            f"language. The previous attempt failed:\n{error}"
+                            "Call submit_recipe again with a complete corrected specification. "
+                            "Preserve every explicit source value and the source language. "
+                            f"The previous attempt failed:\n{error}"
                         )
-                        spec, profile = await asyncio.wait_for(
-                            _generate_once(source, correction, None, retry=True),
+                        submit, profile = await asyncio.wait_for(
+                            _generate_once(
+                                source, correction, None, retry=True, user_overrides=None
+                            ),
                             timeout=args.timeout,
                         )
                 result.update(
                     status="ok_repaired" if "first_errors" in result else "ok",
-                    spec=spec.model_dump(exclude_unset=True),
+                    spec=submit.model_dump(by_alias=True, exclude_none=True),
+                    recipe=to_beerjson_document(submit.recipe),
                     steps=[
                         {
                             "name": step["name"],

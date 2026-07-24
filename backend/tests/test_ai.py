@@ -27,13 +27,14 @@ from core.db import (
     HydrometerTelemetry,
     Profile,
 )
+from features.ai.beerjson_schema import assert_valid_beerjson
+from features.ai.brewzilla_overrides import BrewZillaOverrides
 from features.ai.recipe_wizard import (
     RECIPE_WIZARD_VALIDATOR_PROMPT,
-    RecipeSpec,
+    SubmitRecipe,
     _parse_semantic_validation,
     _run_semantic_validator,
     _validator_response_formats,
-    compile_brewzilla_profile,
     generate_profile,
 )
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
@@ -208,221 +209,50 @@ def _count_messages(session_factory, conversation_id: str) -> int:
         )
 
 
-_VALID_WIZARD_JSON = json.dumps(
-    {
-        "name": "APA 23 л",
-        "description": "Одноступенчатое затирание и кип 60 минут",
-        "public": False,
-        "profile_type_id": None,
-        "profile_type_name": None,
-        "steps": [
-            {
-                "id": None,
-                "name": "Mash In",
-                "order": 7,
-                "controlType": "Target",
-                "endType": "Manual",
-                "durationType": "Manual",
-                "operator": None,
-                "length": None,
-                "temperature": 69.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [
-                    {
-                        "id": None,
-                        "alertText": "Засыпать солод",
-                        "trigger": "Temperature",
-                        "operator": None,
-                        "temperature": 69.0,
-                        "gravity": None,
-                        "length": None,
-                    }
-                ],
-            },
-            {
-                "id": None,
-                "name": "Мальтозная пауза",
-                "order": 8,
-                "controlType": "Target",
-                "endType": "Duration",
-                "durationType": "Temperature",
-                "operator": None,
-                "length": 3600,
-                "temperature": 67.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [],
-            },
-            {
-                "id": None,
-                "name": "Mash Out",
-                "order": 2,
-                "controlType": "Target",
-                "endType": "Duration",
-                "durationType": "Temperature",
-                "operator": None,
-                "length": 600,
-                "temperature": 78.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [],
-            },
-            {
-                "id": None,
-                "name": "Sparge",
-                "order": 3,
-                "controlType": "Target",
-                "endType": "Manual",
-                "durationType": "Manual",
-                "operator": None,
-                "length": None,
-                "temperature": 78.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [],
-            },
-            {
-                "id": None,
-                "name": "Boil",
-                "order": 9,
-                "controlType": "Target",
-                "endType": "Duration",
-                "durationType": "Temperature",
-                "operator": None,
-                "length": 3600,
-                "temperature": 100.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [
-                    {
-                        "id": None,
-                        "alertText": "Добавить хмель — до конца кипа 15 минут",
-                        "trigger": "Duration",
-                        "operator": None,
-                        "temperature": None,
-                        "gravity": None,
-                        "length": 2700,
-                    }
-                ],
-            },
-            {
-                "id": None,
-                "name": "Cooling",
-                "order": 10,
-                "controlType": "Target",
-                "endType": "Temperature",
-                "durationType": "Temperature",
-                "operator": None,
-                "length": None,
-                "temperature": 20.0,
-                "minTemperature": None,
-                "maxTemperature": None,
-                "gravity": None,
-                "pumpEnabled": None,
-                "pumpUtilisation": None,
-                "heatingUtilisation": None,
-                "pidEnabled": None,
-                "sensorDifferential": None,
-                "alerts": [],
-            },
-        ],
-        "alerts": [],
-    },
-    ensure_ascii=False,
-)
 _VALID_SEMANTIC_VALIDATION = '{"valid":true,"errors":[]}'
-_VALID_RECIPE_SPEC = {
-    "name": "APA 23 л",
-    "description": "Одноступенчатое затирание и кип 60 минут",
-    "style": "American Pale Ale",
-    "batch_volume_l": 23,
-    "ingredients": [
-        {
-            "name": "Солод Pale Ale",
-            "amount": 5,
-            "unit": "кг",
-            "category": "fermentable",
-            "use": "Затирание",
+_VALID_SUBMIT_RECIPE = {
+    "recipe": {
+        "name": "APA 23 л",
+        "type": "all grain",
+        "notes": "Одноступенчатое затирание и кип 60 минут",
+        "ingredients": {
+            "fermentable_additions": [
+                {"name": "Pale Ale malt", "type": "grain", "amount": {"unit": "kg", "value": 5}}
+            ],
+            "hop_additions": [
+                {
+                    "name": "Cascade",
+                    "amount": {"unit": "g", "value": 20},
+                    "timing": {"use": "add_to_boil", "duration": {"unit": "min", "value": 15}},
+                }
+            ],
+            "culture_additions": [{"name": "US-05", "amount": {"unit": "pkg", "value": 1}}],
         },
-        {
-            "name": "Хмель Cascade",
-            "amount": 20,
-            "unit": "г",
-            "category": "hop",
-            "use": "За 15 минут до конца кипячения",
+        "mash": {
+            "mash_steps": [
+                {
+                    "name": "Мальтозная пауза",
+                    "type": "temperature",
+                    "step_temperature": {"unit": "C", "value": 67},
+                    "step_time": {"unit": "min", "value": 60},
+                }
+            ]
         },
-        {
-            "name": "US-05",
-            "amount": None,
-            "unit": None,
-            "category": "yeast",
-            "use": None,
-        },
-    ],
-    "mash_in_temperature_c": 69,
-    "mash_in_alert_text": "Засыпать солод",
-    "mash_rests": [
-        {
-            "name": "Мальтозная пауза",
-            "temperature_c": 67,
-            "duration_seconds": 3600,
-        }
-    ],
-    "heat_power_pct": None,
-    "rest_power_pct": None,
-    "mash_pid_enabled": False,
-    "mash_out_duration_seconds": 600,
-    "boil_temperature_c": 100,
-    "boil_duration_seconds": 3600,
-    "boil_additions": [
-        {
-            "text": "Добавить хмель — до конца кипа 15 минут",
-            "timing_reference": "before_end",
-            "offset_seconds": 900,
-        }
-    ],
-    "whirlpool": None,
-    "cooling_temperature_c": 20,
+        "boil": {"boil_time": {"unit": "min", "value": 60}},
+    },
+    "brewzilla_overrides": {
+        "mash_in_temperature_c": 69,
+        "mash_in_alert_text": "Засыпать солод",
+    },
 }
 
 
-def _recipe_spec_message(spec=None):
+def _recipe_message(submit=None):
     call = SimpleNamespace(
         id="recipe-call",
         function=SimpleNamespace(
-            name="submit_recipe_spec",
-            arguments=json.dumps(spec or _VALID_RECIPE_SPEC, ensure_ascii=False),
+            name="submit_recipe",
+            arguments=json.dumps(submit or _VALID_SUBMIT_RECIPE, ensure_ascii=False),
         ),
     )
     return _message(tool_calls=[call])
@@ -511,9 +341,9 @@ async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, c
         return '{"valid":true,"errors":[]}'
 
     monkeypatch.setattr("features.ai.recipe_wizard._run_chat_completion", complete)
-    spec = RecipeSpec.model_validate(_VALID_RECIPE_SPEC)
+    submit = SubmitRecipe.model_validate(_VALID_SUBMIT_RECIPE)
 
-    result = await _run_semantic_validator("Recipe description", spec)
+    result = await _run_semantic_validator("Recipe description", submit)
 
     assert _parse_semantic_validation(result) == []
     assert requests[0]["response_format"]["type"] == "json_schema"
@@ -781,11 +611,11 @@ async def test_summary_failure_falls_back_to_recent(db, install_llm, monkeypatch
 async def test_generate_profile_happy_path(install_llm, monkeypatch):
     monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "auto")
     factory = install_llm(
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     stages: list[str] = []
-    profile = await generate_profile(
+    profile, recipe = await generate_profile(
         "Американский pale ale, 23 литра. Кип 60 минут, хмель за 15 минут до конца.",
         stages.append,
     )
@@ -805,83 +635,79 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
         "Boil",
         "Cooling",
     ]
-    assert profile["steps"][4]["alerts"][0] == {
-        "id": None,
-        "alertText": "Добавить хмель — до конца кипа 15 минут",
-        "trigger": "Duration",
-        "operator": None,
-        "temperature": None,
-        "gravity": None,
-        "length": 2700,
-    }
+    boil_alert = profile["steps"][4]["alerts"][0]
+    assert boil_alert["alertText"] == "20 g Cascade"
+    assert boil_alert["trigger"] == "Duration"
+    assert boil_alert["length"] == 2700
+    assert_valid_beerjson(recipe)
+    assert recipe["beerjson"]["recipes"][0]["name"] == "APA 23 л"
     request = factory.requests[0]
     assert request["temperature"] == 0
     assert request["tool_choice"] == "auto"
     assert len(request["tools"]) == 1
     tool = request["tools"][0]["function"]
-    assert tool["name"] == "submit_recipe_spec"
+    assert tool["name"] == "submit_recipe"
     schema = tool["parameters"]
     assert schema["additionalProperties"] is False
-    assert "steps" not in schema["properties"]
-    assert "mash_additions" in schema["properties"]
-    assert "mash_rests" in schema["properties"]
-    assert "boil_additions" in schema["properties"]
-    assert "ingredients" in schema["properties"]
-    assert "mash_out_temperature_c" in schema["properties"]
-    assert "sparge_temperature_c" in schema["properties"]
-    assert "include_sparge" in schema["properties"]
-    assert "include_mash_out" in schema["properties"]
-    assert set(schema["$defs"]["IngredientSpec"]["required"]) == {"name", "category"}
-    rest_schema = schema["$defs"]["RestSpec"]["properties"]
-    assert "Do not omit or guess" in rest_schema["duration_seconds"]["description"]
-    assert "45 °C for 15 minutes" in rest_schema["duration_seconds"]["description"]
-    addition_schema = schema["$defs"]["BoilAdditionSpec"]["properties"]
-    assert "boils for N minutes" in addition_schema["timing_reference"]["description"]
-    assert "Do not omit" in addition_schema["offset_seconds"]["description"]
-    assert "boil for 5 minutes" in addition_schema["offset_seconds"]["description"]
-    assert "pump_enabled" not in schema["properties"]
-    assert "pump_utilisation_pct" not in schema["properties"]
+    assert set(schema["properties"]) == {"recipe", "brewzilla_overrides"}
+    defs = schema["$defs"]
+    assert "mash_additions" in defs["BrewZillaOverrides"]["properties"]
+    assert "boil" in defs["RecipeModel"]["properties"]
+    assert "ingredients" in defs["RecipeModel"]["properties"]
+    assert "mash_out_temperature_c" in defs["BrewZillaOverrides"]["properties"]
+    assert "sparge_temperature_c" in defs["BrewZillaOverrides"]["properties"]
+    assert "include_sparge" in defs["BrewZillaOverrides"]["properties"]
+    assert "include_mash_out" in defs["BrewZillaOverrides"]["properties"]
     wizard_system = request["messages"][0]["content"]
-    assert "submit_recipe_spec" in wizard_system
-    assert "Do not return prose or construct low-level profile steps" in wizard_system
+    assert "submit_recipe" in wizard_system
+    assert "Do not return prose" in wizard_system
     assert "tool schema is authoritative" in wizard_system
     assert "Never submit partial objects" in wizard_system
-    assert "45 °C for 15 minutes" in wizard_system
-    assert "Never submit a boil addition with missing timing fields" in wizard_system
-    assert "Use `mash_additions`" in wizard_system
+    assert "add_to_boil" in wizard_system
     validator_system = RECIPE_WIZARD_VALIDATOR_PROMPT
-    assert "exporter-specific steps" in validator_system
-    assert "expected and actual values already match" in validator_system
-    assert "boils for N minutes" in wizard_system
+    assert "already passed schema validation" in validator_system
+    assert "Do not reason" in validator_system
+    assert "exporter step ordering" in validator_system
     semantic_request = factory.requests[1]
     assert semantic_request["response_format"]["type"] == "json_schema"
     assert semantic_request["max_tokens"] == 16_384
     semantic_content = semantic_request["messages"][1]["content"]
     assert "<source_description>" in semantic_content
     assert "<candidate_spec>" in semantic_content
-    assert "<compiler_defaults>" not in semantic_content
-    assert "<candidate_profile>" not in semantic_content
     spec_json = semantic_content.split("<candidate_spec>", 1)[1].split("</candidate_spec>", 1)[0]
-    candidate_spec = json.loads(spec_json)
-    assert [ingredient["name"] for ingredient in candidate_spec["ingredients"]] == [
-        ingredient["name"] for ingredient in _VALID_RECIPE_SPEC["ingredients"]
+    candidate = json.loads(spec_json)
+    assert [
+        addition["name"] for addition in candidate["recipe"]["ingredients"]["hop_additions"]
+    ] == [
+        addition["name"]
+        for addition in _VALID_SUBMIT_RECIPE["recipe"]["ingredients"]["hop_additions"]
     ]
-    assert candidate_spec["boil_additions"] == _VALID_RECIPE_SPEC["boil_additions"]
-    assert candidate_spec["include_sparge"] is True
-    assert candidate_spec["include_mash_out"] is True
-    assert candidate_spec["mash_out_temperature_c"] == 78
-    assert candidate_spec["sparge_temperature_c"] == 78
-    assert "Yeast and other" in semantic_request["messages"][0]["content"]
+    assert candidate["brewzilla_overrides"]["mash_in_temperature_c"] == 69
+    assert "ingredient names copied character for character" in validator_system
+
+
+async def test_generate_profile_applies_user_overrides_over_extracted(install_llm):
+    install_llm(
+        [_recipe_message()],
+        [_message(_VALID_SEMANTIC_VALIDATION)],
+    )
+
+    profile, _recipe = await generate_profile(
+        "Американский pale ale, 23 литра. Кип 60 минут, хмель за 15 минут до конца.",
+        user_overrides=BrewZillaOverrides(mash_in_temperature_c=66),
+    )
+
+    assert profile["steps"][0]["temperature"] == 66
 
 
 async def test_generate_profile_retries_broken_semantic_validator_without_repair(install_llm):
     factory = install_llm(
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message("not json " * 1000)],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     stages: list[str] = []
-    profile = await generate_profile("Кип 60 минут", stages.append)
+    profile, _recipe = await generate_profile("Кип 60 минут", stages.append)
 
     assert profile["steps"][-1]["name"] == "Cooling"
     assert stages == ["generating", "checking_structure", "checking_recipe"]
@@ -892,10 +718,10 @@ async def test_generate_profile_retries_broken_semantic_validator_without_repair
 
 async def test_generate_profile_logs_broken_semantic_validator_reason(install_llm, caplog):
     install_llm(
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message("not json " * 1000)],
         [_message('{"valid":true,"errors":["contradiction"]}')],
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message("[]")],
         [_message('{"valid":true,"errors":["still bad"]}')],
     )
@@ -916,7 +742,7 @@ async def test_generate_profile_logs_broken_semantic_validator_reason(install_ll
 
 async def test_recipe_wizard_stream_emits_progress(install_llm):
     install_llm(
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     response = await recipe_wizard_stream_endpoint(RecipeWizardRequest(description="Кип 60 минут"))
@@ -928,188 +754,22 @@ async def test_recipe_wizard_stream_emits_progress(install_llm):
         "checking_recipe",
     ]
     assert events[-1]["type"] == "result"
-
-
-def _redundant_heat_transition(data):
-    data["steps"].insert(
-        3,
-        {
-            **data["steps"][2],
-            "name": "Heat to 78",
-            "endType": "Temperature",
-            "durationType": "Temperature",
-            "length": None,
-            "alerts": [],
-        },
-    )
-
-
-def _wrong_mash_out_power(data):
-    data["steps"][0]["heatingUtilisation"] = 90
-    data["steps"].insert(
-        1,
-        {
-            **data["steps"][1],
-            "name": "Heat to first rest",
-            "endType": "Temperature",
-            "durationType": "Temperature",
-            "length": None,
-            "heatingUtilisation": 90,
-            "pidEnabled": False,
-            "alerts": [],
-        },
-    )
-    data["steps"][2].update(heatingUtilisation=50, pidEnabled=True)
-    data["steps"][3].update(heatingUtilisation=90, pidEnabled=False)
-    data["steps"][5]["heatingUtilisation"] = 90
-    data["steps"][6]["heatingUtilisation"] = 0
-
-
-_WIZARD_ERROR_CASES = [
-    (
-        lambda d: d["steps"][1].__setitem__("durationType", "Start"),
-        "target duration timer must start at temperature",
-    ),
-    (
-        lambda d: (
-            d["steps"][0].update(heatingUtilisation=0.9),
-            d["steps"][1].update(heatingUtilisation=0.5),
-            d["steps"][2].update(heatingUtilisation=0.5),
-            d["steps"][4].update(heatingUtilisation=0.9),
-            d["steps"][5].update(heatingUtilisation=0),
-        ),
-        "heating utilisation appears to use a fractional percentage",
-    ),
-    (
-        lambda d: d["steps"][2].__setitem__("endType", "Temperature"),
-        "mash-out completion configuration is invalid",
-    ),
-    (
-        lambda d: d["steps"][3].__setitem__("durationType", "Temperature"),
-        "sparge completion configuration is invalid",
-    ),
-    (
-        lambda d: d["steps"][4].__setitem__("endType", "Temperature"),
-        "boil completion configuration is invalid",
-    ),
-    (
-        lambda d: d["steps"][5].__setitem__("pidEnabled", True),
-        "cooling configuration is invalid",
-    ),
-    (
-        lambda d: d["steps"][5].__setitem__("durationType", "Start"),
-        "target step durationType must not be Start",
-    ),
-    (_redundant_heat_transition, "redundant heat transition"),
-    (_wrong_mash_out_power, "mash-out heating utilisation does not match rest power"),
-    (
-        lambda d: d["steps"][2].__setitem__("temperature", 76),
-        "mash-out temperature must be 78",
-    ),
-    (
-        lambda d: d["steps"][4]["alerts"][0].__setitem__("length", 3601),
-        "alert 0 occurs after step end",
-    ),
-    (
-        lambda d: d["steps"][0].__setitem__("alerts", []),
-        "mash-in temperature alert is required",
-    ),
-    (
-        lambda d: d["steps"][0]["alerts"][0].__setitem__("temperature", None),
-        "alert 0 temperature must be a finite number",
-    ),
-    (
-        lambda d: (
-            d["steps"][0].update(temperature=65),
-            d["steps"][0]["alerts"][0].update(temperature=65),
-            d["steps"][1].update(temperature=45),
-        ),
-        "actual=65, first_rest=45, expected=47-49",
-    ),
-    (
-        lambda d: d["steps"][0].update(
-            controlType="Ramp", endType="Duration", durationType="Start", length=600
-        ),
-        "mash-in must wait for manual completion",
-    ),
-    (
-        lambda d: d["steps"][0].update(endType="Temperature", durationType="Start"),
-        "mash-in must wait for manual completion",
-    ),
-    (
-        lambda d: (
-            d["steps"][0].__setitem__("heatingUtilisation", 90),
-            d["steps"][4].__setitem__("heatingUtilisation", 50),
-        ),
-        "heating utilisation does not match profile heat power: actual=50.0, expected=90",
-    ),
-]
-
-
-_WIZARD_SPEC_ERROR_CASES = [
-    (
-        lambda d: d["ingredients"][0].pop("unit"),
-        "ingredient amount and unit must both be provided or both be null",
-    ),
-    (
-        lambda d: d["boil_additions"][0].__setitem__("offset_seconds", 3700),
-        "boil addition occurs outside the boil",
-    ),
-    (
-        lambda d: (
-            d.__setitem__("mash_in_temperature_c", None),
-            d.__setitem__("mash_rests", []),
-        ),
-        "mash-in temperature or at least one mash rest is required",
-    ),
-]
-
-
-@pytest.mark.parametrize("mutator, expected", _WIZARD_SPEC_ERROR_CASES)
-def test_compile_brewzilla_profile_rejects_invalid_semantic_spec(mutator, expected):
-    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
-    mutator(data)
-    with pytest.raises(ValueError) as error:
-        compile_brewzilla_profile(RecipeSpec.model_validate(data))
-    assert expected in str(error.value)
-
-
-def test_compile_brewzilla_profile_preserves_explicit_low_mash_in():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "mash_in_temperature_c": 38,
-        "mash_in_alert_text": "Добавить солод",
-        "mash_rests": [
-            {
-                "temperature_c": 45,
-                "duration_seconds": 900,
-            }
-        ],
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    assert [step["name"] for step in profile["steps"][:2]] == [
-        "Mash In",
-        "45 °C",
-    ]
-    assert profile["steps"][0]["temperature"] == 38
-    assert profile["steps"][0]["endType"] == "Manual"
+    assert_valid_beerjson(events[-1]["recipe"])
 
 
 async def test_generate_profile_repairs_structural_error(install_llm):
     factory = install_llm(
-        [_recipe_spec_message({"name": "bad"})],
-        [_recipe_spec_message()],
+        [_recipe_message({"recipe": {"name": "bad"}})],
+        [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
-    profile = await generate_profile("Собери профиль IPA с кипом 60 минут")
+    profile, _recipe = await generate_profile("Собери профиль IPA с кипом 60 минут")
 
     assert profile["steps"][0]["order"] == 0
     assert len(factory.requests) == 3
     retry_messages = factory.requests[1]["messages"]
     for token in (
-        "submit_recipe_spec again",
+        "submit_recipe again",
         "previous attempt failed",
         "Field required",
     ):
@@ -1118,17 +778,17 @@ async def test_generate_profile_repairs_structural_error(install_llm):
 
 async def test_generate_profile_repairs_semantic_error(install_llm):
     factory = install_llm(
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [
             _message(
                 '{"valid":false,"errors":["Boil spice alert length: expected 3000, actual 600."]}'
             )
         ],
-        [_recipe_spec_message()],
+        [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     stages: list[str] = []
-    profile = await generate_profile(
+    profile, _recipe = await generate_profile(
         "Кип 60 минут. Специи за 10 минут до конца кипа.",
         stages.append,
     )
@@ -1147,268 +807,36 @@ async def test_generate_profile_repairs_semantic_error(install_llm):
     assert "expected 3000, actual 600" in retry_message
 
 
-def test_compile_brewzilla_profile_applies_power_and_pid_rules():
-    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
-    data.update(heat_power_pct=90, rest_power_pct=50, mash_pid_enabled=True)
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    mash_in = profile["steps"][0]
-    first_rest = profile["steps"][1]
-    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
-    mash_out_transition = profile["steps"][profile["steps"].index(mash_out) - 1]
-    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
-    assert mash_in["heatingUtilisation"] == 90
-    assert first_rest["heatingUtilisation"] == 50
-    assert first_rest["pidEnabled"] is True
-    assert mash_out_transition["endType"] == "Temperature"
-    assert mash_out_transition["heatingUtilisation"] == 90
-    assert boil["heatingUtilisation"] == 90
-    assert boil["pidEnabled"] is False
-
-
-def test_compile_brewzilla_profile_applies_defaults_and_boil_timing():
-    data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
-    data["mash_in_temperature_c"] = None
-    data["mash_in_alert_text"] = None
-    data["mash_out_end_alert_text"] = "Mash Out завершён"
-    data["boil_additions"].append(
-        {
-            "text": "Добавить сахар через 10 минут",
-            "timing_reference": "from_start",
-            "offset_seconds": 600,
-        }
-    )
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    assert profile["steps"][0]["temperature"] == 70
-    assert profile["steps"][0]["alerts"][0]["alertText"] == "Add grain"
-    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
-    assert [alert["length"] for alert in boil["alerts"]] == [2700, 600]
-    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
-    assert mash_out["temperature"] == 78
-    assert mash_out["alerts"][0]["trigger"] == "StepEnd"
-    assert profile["steps"][-1]["temperature"] == 20
-
-
-def test_compile_brewzilla_profile_preserves_stage_temperatures():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "mash_out_temperature_c": 76,
-        "sparge_temperature_c": 77,
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    assert (
-        next(step for step in profile["steps"] if step["name"] == "Mash Out")["temperature"] == 76
-    )
-    assert next(step for step in profile["steps"] if step["name"] == "Sparge")["temperature"] == 77
-
-
-def test_compile_brewzilla_profile_preserves_explicit_mash_additions():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "mash_additions": [
-            {"text": "Add prepared adjunct", "temperature_c": 33},
-        ],
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    alerts = profile["steps"][0]["alerts"]
-    assert alerts[1]["alertText"] == "Add prepared adjunct"
-    assert alerts[1]["trigger"] == "Temperature"
-    assert alerts[1]["temperature"] == 33
-
-
-def test_compile_brewzilla_profile_preserves_whirlpool_without_temperature():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "whirlpool": {
-            "name": "Вирпул",
-            "duration_seconds": 300,
-            "ingredients": [
-                {
-                    "name": "Cascade",
-                    "amount": 50,
-                    "unit": "г",
-                    "category": "hop",
-                    "use": "Вирпул",
-                }
-            ],
-        },
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    whirlpool = next(step for step in profile["steps"] if step["name"] == "Вирпул")
-    assert whirlpool["temperature"] == 100
-    assert whirlpool["length"] == 300
-    assert whirlpool["heatingUtilisation"] == 0
-    assert whirlpool["pidEnabled"] is False
-
-
-def test_compile_brewzilla_profile_preserves_blanche_alerts_and_final_mash_out():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "mash_in_temperature_c": 48,
-        "mash_rests": [
-            {
-                "name": f"Пауза {temperature} °C",
-                "temperature_c": temperature,
-                "duration_seconds": duration * 60,
-                "end_alert_text": f"Пауза {temperature} °C завершена",
-            }
-            for temperature, duration in [(45, 15), (50, 10), (63, 30), (65, 20), (72, 20), (78, 5)]
-        ],
-        "heat_power_pct": 90,
-        "rest_power_pct": 50,
-        "mash_pid_enabled": True,
-        "mash_out_duration_seconds": 600,
-        "mash_out_end_alert_text": "Mash Out завершён",
-        "sparge_alert_text": "Начать промывку",
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    assert profile["steps"][1]["name"] == "Пауза 45 °C"
-    assert profile["steps"][1]["heatingUtilisation"] == 50
-    assert [step["name"] for step in profile["steps"]].count("Mash Out") == 1
-    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
-    assert mash_out["length"] == 300
-    assert mash_out["alerts"][0] == {
-        "id": None,
-        "alertText": "Пауза 78 °C завершена",
-        "trigger": "StepEnd",
-        "operator": None,
-        "temperature": None,
-        "gravity": None,
-        "length": None,
-    }
-    rests = [
-        step
-        for step in profile["steps"]
-        if step["name"].startswith("Пауза") or step["name"] == "Mash Out"
-    ]
-    assert all(any(alert["trigger"] == "StepEnd" for alert in step["alerts"]) for step in rests)
-    sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
-    assert sparge["alerts"][0]["trigger"] == "StepStart"
-    assert sparge["heatingUtilisation"] == 0
-    assert sparge["pidEnabled"] is False
-    assert all(
-        step["pumpEnabled"] is None and step["pumpUtilisation"] is None for step in profile["steps"]
-    )
-
-
-def test_compile_brewzilla_profile_honors_disabled_setup_features():
-    data = {
-        **_VALID_RECIPE_SPEC,
-        "mash_in_alert_text": None,
-        "include_temperature_alerts": False,
-        "include_sparge": False,
-        "include_mash_out": False,
-    }
-
-    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
-
-    names = [step["name"] for step in profile["steps"]]
-    assert "Mash Out" not in names
-    assert "Sparge" not in names
-    assert all(
-        alert["trigger"] != "Temperature" for step in profile["steps"] for alert in step["alerts"]
-    )
-
-
 async def test_generate_profile_gives_up_after_second_failure(install_llm):
     install_llm([_message('{"name":"bad"}')], [_message("[]")])
     with pytest.raises(ValueError, match="Модель не смогла собрать корректный профиль"):
         await generate_profile("Собери профиль стаута")
 
 
-async def test_generate_profile_rejects_forbidden_enums(install_llm):
-    freerise_step = {
-        "id": None,
-        "name": "Mash step",
-        "order": 0,
-        "controlType": "FreeRise",
-        "endType": "Duration",
-        "durationType": "Start",
-        "operator": None,
-        "length": 600,
-        "temperature": None,
-        "minTemperature": None,
-        "maxTemperature": None,
-        "gravity": None,
-        "pumpEnabled": None,
-        "pumpUtilisation": None,
-        "heatingUtilisation": None,
-        "pidEnabled": None,
-        "sensorDifferential": None,
-        "alerts": [],
-    }
-    gravity_alert_step = {
-        "id": None,
-        "name": "Mash step",
-        "order": 0,
-        "controlType": "Target",
-        "endType": "Duration",
-        "durationType": "Temperature",
-        "operator": None,
-        "length": 600,
-        "temperature": 66,
-        "minTemperature": None,
-        "maxTemperature": None,
-        "gravity": None,
-        "pumpEnabled": None,
-        "pumpUtilisation": None,
-        "heatingUtilisation": None,
-        "pidEnabled": None,
-        "sensorDifferential": None,
-        "alerts": [
-            {
-                "id": None,
-                "alertText": "Gravity alert",
-                "trigger": "Gravity",
-                "operator": None,
-                "temperature": None,
-                "gravity": 1.01,
-                "length": None,
-            }
-        ],
-    }
-
-    def _profile(step):
-        return json.dumps(
-            {
-                "name": "Bad recipe",
-                "description": None,
-                "public": False,
-                "profile_type_id": None,
-                "profile_type_name": None,
-                "steps": [step],
-                "alerts": [],
-            }
-        )
-
-    invalid_spec = {**_VALID_RECIPE_SPEC, "steps": [freerise_step, gravity_alert_step]}
+async def test_generate_profile_rejects_unknown_tool_fields(install_llm):
+    invalid_submit = {**_VALID_SUBMIT_RECIPE, "unexpected_field": True}
     install_llm(
-        [_recipe_spec_message(invalid_spec)],
-        [_recipe_spec_message(invalid_spec)],
+        [_recipe_message(invalid_submit)],
+        [_recipe_message(invalid_submit)],
     )
     with pytest.raises(ValueError, match="Модель не смогла собрать корректный профиль"):
-        await generate_profile("Собери профиль с неверными enum")
+        await generate_profile("Собери профиль с лишним полем")
 
 
 async def test_generate_profile_repairs_missing_alert_text(install_llm):
-    invalid_spec = {**_VALID_RECIPE_SPEC, "mash_in_alert_text": ""}
+    invalid_submit = {
+        **_VALID_SUBMIT_RECIPE,
+        "brewzilla_overrides": {
+            **_VALID_SUBMIT_RECIPE["brewzilla_overrides"],
+            "mash_in_alert_text": "",
+        },
+    }
     factory = install_llm(
-        [_recipe_spec_message(invalid_spec)],
-        [_recipe_spec_message()],
+        [_recipe_message(invalid_submit)],
+        [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
-    profile = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
+    profile, _recipe = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
 
     assert profile["steps"][4]["alerts"][0]["alertText"]
     retry_message = factory.requests[1]["messages"][-1]["content"]

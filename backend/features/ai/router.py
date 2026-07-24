@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
+from .brewzilla_overrides import BrewZillaOverrides
 from .recipe_wizard import generate_profile
 from .services import (
     open_conversation,
@@ -47,6 +48,7 @@ class ResetConversationRequest(BaseModel):
 
 class RecipeWizardRequest(BaseModel):
     description: str = Field(min_length=8, max_length=12_000)
+    overrides: BrewZillaOverrides | None = None
 
 
 def _raise_ai_error(error: Exception) -> None:
@@ -100,7 +102,10 @@ async def reset_conversation_endpoint(
 @router.post("/api/ai/recipe-wizard")
 async def recipe_wizard_endpoint(request: RecipeWizardRequest) -> dict:
     try:
-        return await generate_profile(request.description)
+        profile, _recipe = await generate_profile(
+            request.description, user_overrides=request.overrides
+        )
+        return profile
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except (APIConnectionError, OpenAIError) as error:
@@ -114,11 +119,12 @@ async def recipe_wizard_stream_endpoint(request: RecipeWizardRequest) -> Streami
 
         async def run() -> None:
             try:
-                profile = await generate_profile(
+                profile, recipe = await generate_profile(
                     request.description,
                     lambda stage: queue.put_nowait({"type": "progress", "stage": stage}),
+                    user_overrides=request.overrides,
                 )
-                await queue.put({"type": "result", "profile": profile})
+                await queue.put({"type": "result", "profile": profile, "recipe": recipe})
             except ValueError as error:
                 await queue.put({"type": "error", "message": str(error)})
             except APIConnectionError:
