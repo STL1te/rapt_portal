@@ -3,10 +3,10 @@
 import json
 import logging
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, Self
 
 from openai import BadRequestError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from core.config import LLM_BASE_URL, LLM_MODEL, LLM_RESPONSE_FORMAT, LLM_TOP_P
 from features.profiles.enums import STEP_NAME_MAX_LEN, STEP_NAME_MIN_LEN
@@ -22,8 +22,6 @@ RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
 _VALIDATOR_MAX_TOKENS = 16_384
 _VALIDATOR_PREVIEW_CHARS = 300
-_MASH_OUT_TEMPERATURE_C = 78
-_SPARGE_TEMPERATURE_C = 78
 _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
@@ -95,9 +93,68 @@ class BoilAdditionSpec(_SpecModel):
     )
 
 
+class IngredientSpec(_SpecModel):
+    name: str = Field(
+        min_length=1,
+        max_length=300,
+        description=(
+            "Exact ingredient name only. Copy it character for character; never append its use, "
+            "stage, timing, or preparation."
+        ),
+    )
+    amount: float | None = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Numeric ingredient amount, or null when the source gives no amount.",
+    )
+    unit: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=30,
+        description="Unit for amount, or null when amount is null.",
+    )
+    category: str = Field(
+        min_length=1,
+        max_length=50,
+        description="Concise ingredient kind such as grain, hop, yeast, sugar, fruit, or water.",
+    )
+    use: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=300,
+        description=(
+            "Explicit stage, timing, or preparation such as whirlpool, primary fermentation, "
+            "mash, or pre-boil separately. Never append this text to name."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def amount_and_unit_are_paired(self) -> Self:
+        if (self.amount is None) != (self.unit is None):
+            raise ValueError("ingredient amount and unit must both be provided or both be null")
+        return self
+
+
+class WhirlpoolSpec(_SpecModel):
+    name: str | None = Field(
+        default=None,
+        min_length=STEP_NAME_MIN_LEN,
+        max_length=STEP_NAME_MAX_LEN,
+    )
+    temperature_c: float | None = Field(default=None, allow_inf_nan=False)
+    duration_seconds: int = Field(gt=0)
+    ingredients: list[IngredientSpec] = Field(default_factory=list)
+    temperature_alert_text: str | None = Field(default=None, min_length=1)
+    end_alert_text: str | None = Field(default=None, min_length=1)
+
+
 class RecipeSpec(_SpecModel):
     name: str = Field(min_length=STEP_NAME_MIN_LEN, max_length=STEP_NAME_MAX_LEN)
     description: str = Field(min_length=12, max_length=2000)
+    style: str | None = Field(default=None, min_length=1, max_length=200)
+    batch_volume_l: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    ingredients: list[IngredientSpec] = Field(default_factory=list)
     mash_in_temperature_c: float | None = Field(default=None, allow_inf_nan=False)
     mash_in_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
     mash_additions: list[MashAdditionSpec] = Field(default_factory=list)
@@ -108,31 +165,16 @@ class RecipeSpec(_SpecModel):
     heat_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     rest_power_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     mash_pid_enabled: bool = False
+    mash_out_temperature_c: float = Field(default=78, allow_inf_nan=False)
     mash_out_duration_seconds: int = Field(default=600, gt=0)
     mash_out_end_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
+    sparge_temperature_c: float = Field(default=78, allow_inf_nan=False)
     sparge_alert_text: str | None = Field(default=None, min_length=1, max_length=500)
     boil_temperature_c: float = Field(default=100, allow_inf_nan=False)
     boil_duration_seconds: int | None = Field(default=None, gt=0)
     boil_additions: list[BoilAdditionSpec] = Field(default_factory=list)
-    whirlpool: RestSpec | None = None
+    whirlpool: WhirlpoolSpec | None = None
     cooling_temperature_c: float = Field(default=20, allow_inf_nan=False)
-
-
-def _compiler_defaults() -> dict:
-    fields = RecipeSpec.model_fields
-    return {
-        "mash_out": {
-            "included": fields["include_mash_out"].default,
-            "temperature_c": _MASH_OUT_TEMPERATURE_C,
-            "duration_seconds": fields["mash_out_duration_seconds"].default,
-        },
-        "sparge": {
-            "included": fields["include_sparge"].default,
-            "temperature_c": _SPARGE_TEMPERATURE_C,
-        },
-        "boil": {"temperature_c": fields["boil_temperature_c"].default},
-        "cooling": {"temperature_c": fields["cooling_temperature_c"].default},
-    }
 
 
 _RECIPE_SPEC_TOOL = {
@@ -140,8 +182,8 @@ _RECIPE_SPEC_TOOL = {
     "function": {
         "name": "submit_recipe_spec",
         "description": (
-            "Submit the recipe facts and user-facing text. The server applies all BrewZilla "
-            "step, alert, ordering, power, PID, and default rules."
+            "Submit source recipe facts and requested process controls. Deterministic exporters "
+            "apply target-specific structure and defaults."
         ),
         "parameters": RecipeSpec.model_json_schema(),
     },
@@ -329,18 +371,18 @@ def _boil_alerts(spec: RecipeSpec) -> list[dict]:
     return alerts
 
 
-def compile_recipe(spec: RecipeSpec) -> dict:
-    """Compile semantic recipe facts into the only low-level profile shape we emit."""
+def compile_brewzilla_profile(spec: RecipeSpec) -> dict:
+    """Compile semantic recipe facts into a BrewZilla profile."""
     mash_rests = list(spec.mash_rests)
     mash_out = None
     if spec.include_mash_out:
         mash_out = RestSpec(
             name="Mash Out",
-            temperature_c=_MASH_OUT_TEMPERATURE_C,
+            temperature_c=spec.mash_out_temperature_c,
             duration_seconds=spec.mash_out_duration_seconds,
             end_alert_text=spec.mash_out_end_alert_text,
         )
-        if mash_rests and mash_rests[-1].temperature_c == 78:
+        if mash_rests and mash_rests[-1].temperature_c == spec.mash_out_temperature_c:
             mash_out = mash_rests.pop().model_copy(update={"name": "Mash Out"})
 
     first_rest_temperature = mash_rests[0].temperature_c if mash_rests else None
@@ -350,17 +392,16 @@ def compile_recipe(spec: RecipeSpec) -> dict:
             raise ValueError("mash-in temperature or at least one mash rest is required")
         mash_in_temperature = first_rest_temperature + 3
 
-    if spec.include_temperature_alerts and not spec.mash_in_alert_text:
-        raise ValueError("mash-in alert text is required when temperature alerts are enabled")
+    mash_in_alert_text = spec.mash_in_alert_text or "Add grain"
     mash_in_alerts = (
         [
             _alert(
-                spec.mash_in_alert_text,
+                mash_in_alert_text,
                 "Temperature",
                 temperature=mash_in_temperature,
             )
         ]
-        if spec.include_temperature_alerts and spec.mash_in_alert_text
+        if spec.include_temperature_alerts
         else []
     )
     mash_in_alerts.extend(
@@ -388,15 +429,15 @@ def compile_recipe(spec: RecipeSpec) -> dict:
     if spec.include_sparge:
         if (
             not mash_out
-            and previous_temperature < _SPARGE_TEMPERATURE_C
+            and previous_temperature < spec.sparge_temperature_c
             and spec.heat_power_pct is not None
             and spec.rest_power_pct is not None
             and spec.heat_power_pct != spec.rest_power_pct
         ):
             steps.append(
                 _step(
-                    f"→ {_SPARGE_TEMPERATURE_C:g} °C",
-                    _SPARGE_TEMPERATURE_C,
+                    f"→ {spec.sparge_temperature_c:g} °C",
+                    spec.sparge_temperature_c,
                     end_type="Temperature",
                     duration_type="Temperature",
                     length=None,
@@ -407,7 +448,7 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         steps.append(
             _step(
                 "Sparge",
-                _SPARGE_TEMPERATURE_C,
+                spec.sparge_temperature_c,
                 end_type="Manual",
                 duration_type="Manual",
                 length=None,
@@ -431,7 +472,38 @@ def compile_recipe(spec: RecipeSpec) -> dict:
         )
     )
     if spec.whirlpool:
-        _append_rest(steps, spec.whirlpool, spec, spec.boil_temperature_c)
+        whirlpool_temperature = (
+            spec.whirlpool.temperature_c
+            if spec.whirlpool.temperature_c is not None
+            else spec.boil_temperature_c
+        )
+        whirlpool_alerts = []
+        if (
+            spec.include_temperature_alerts
+            and spec.whirlpool.temperature_c is not None
+            and spec.whirlpool.temperature_alert_text
+        ):
+            whirlpool_alerts.append(
+                _alert(
+                    spec.whirlpool.temperature_alert_text,
+                    "Temperature",
+                    temperature=spec.whirlpool.temperature_c,
+                )
+            )
+        if spec.whirlpool.end_alert_text:
+            whirlpool_alerts.append(_alert(spec.whirlpool.end_alert_text, "StepEnd"))
+        steps.append(
+            _step(
+                spec.whirlpool.name or "Whirlpool",
+                whirlpool_temperature,
+                end_type="Duration",
+                duration_type="Temperature",
+                length=spec.whirlpool.duration_seconds,
+                heating=0,
+                pid=False,
+                alerts=whirlpool_alerts,
+            )
+        )
     steps.append(
         _step(
             "Cooling",
@@ -496,18 +568,14 @@ def _parse_semantic_validation(raw: str) -> list[str]:
     return [error.strip() for error in errors]
 
 
-async def _run_semantic_validator(description: str, spec: RecipeSpec, profile: dict) -> str:
+async def _run_semantic_validator(description: str, spec: RecipeSpec) -> str:
     messages = [
         {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
         {
             "role": "user",
             "content": (
                 f"<source_description>{description}</source_description>\n"
-                f"<compiler_defaults>{json.dumps(_compiler_defaults(), separators=(',', ':'))}"
-                "</compiler_defaults>\n"
-                f"<candidate_spec>{spec.model_dump_json()}</candidate_spec>\n"
-                f"<candidate_profile>{json.dumps(profile, ensure_ascii=False, separators=(',', ':'))}"
-                "</candidate_profile>"
+                f"<candidate_spec>{spec.model_dump_json()}</candidate_spec>"
             ),
         },
     ]
@@ -549,13 +617,11 @@ async def _run_semantic_validator(description: str, spec: RecipeSpec, profile: d
     return await _run_chat_completion(messages, **request)
 
 
-async def _semantic_profile_errors(description: str, spec: RecipeSpec, profile: dict) -> list[str]:
+async def _semantic_spec_errors(description: str, spec: RecipeSpec) -> list[str]:
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            return _parse_semantic_validation(
-                await _run_semantic_validator(description, spec, profile)
-            )
+            return _parse_semantic_validation(await _run_semantic_validator(description, spec))
         except (json.JSONDecodeError, ValueError) as error:
             last_error = error
             if attempt == 0:
@@ -576,12 +642,11 @@ async def _generate_once(
 ) -> tuple[RecipeSpec, dict]:
     spec = await _extract_recipe_spec(_recipe_wizard_messages(description, correction))
     on_progress and on_progress("checking_fixed_structure" if retry else "checking_structure")
-    profile = compile_recipe(spec)
     on_progress and on_progress("checking_fixed_recipe" if retry else "checking_recipe")
-    semantic_errors = await _semantic_profile_errors(description, spec, profile)
+    semantic_errors = await _semantic_spec_errors(description, spec)
     if semantic_errors:
         raise ValueError("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
-    return spec, profile
+    return spec, compile_brewzilla_profile(spec)
 
 
 async def generate_profile(

@@ -46,7 +46,7 @@ class ResetConversationRequest(BaseModel):
 
 
 class RecipeWizardRequest(BaseModel):
-    description: str = Field(min_length=8, max_length=4000)
+    description: str = Field(min_length=8, max_length=12_000)
 
 
 def _raise_ai_error(error: Exception) -> None:

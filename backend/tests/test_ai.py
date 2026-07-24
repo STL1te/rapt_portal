@@ -33,7 +33,7 @@ from features.ai.recipe_wizard import (
     _parse_semantic_validation,
     _run_semantic_validator,
     _validator_response_formats,
-    compile_recipe,
+    compile_brewzilla_profile,
     generate_profile,
 )
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
@@ -365,6 +365,31 @@ _VALID_SEMANTIC_VALIDATION = '{"valid":true,"errors":[]}'
 _VALID_RECIPE_SPEC = {
     "name": "APA 23 л",
     "description": "Одноступенчатое затирание и кип 60 минут",
+    "style": "American Pale Ale",
+    "batch_volume_l": 23,
+    "ingredients": [
+        {
+            "name": "Солод Pale Ale",
+            "amount": 5,
+            "unit": "кг",
+            "category": "fermentable",
+            "use": "Затирание",
+        },
+        {
+            "name": "Хмель Cascade",
+            "amount": 20,
+            "unit": "г",
+            "category": "hop",
+            "use": "За 15 минут до конца кипячения",
+        },
+        {
+            "name": "US-05",
+            "amount": None,
+            "unit": None,
+            "category": "yeast",
+            "use": None,
+        },
+    ],
     "mash_in_temperature_c": 69,
     "mash_in_alert_text": "Засыпать солод",
     "mash_rests": [
@@ -470,6 +495,7 @@ def test_semantic_validator_honors_configured_response_format(monkeypatch):
 
 async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, caplog):
     requests: list[dict] = []
+    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "auto")
 
     async def complete(_messages, **kwargs):
         requests.append(kwargs)
@@ -487,7 +513,7 @@ async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, c
     monkeypatch.setattr("features.ai.recipe_wizard._run_chat_completion", complete)
     spec = RecipeSpec.model_validate(_VALID_RECIPE_SPEC)
 
-    result = await _run_semantic_validator("Recipe description", spec, compile_recipe(spec))
+    result = await _run_semantic_validator("Recipe description", spec)
 
     assert _parse_semantic_validation(result) == []
     assert requests[0]["response_format"]["type"] == "json_schema"
@@ -752,7 +778,8 @@ async def test_summary_failure_falls_back_to_recent(db, install_llm, monkeypatch
 # --------------------------------------------------------------------------- #
 
 
-async def test_generate_profile_happy_path(install_llm):
+async def test_generate_profile_happy_path(install_llm, monkeypatch):
+    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "auto")
     factory = install_llm(
         [_recipe_spec_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
@@ -799,8 +826,12 @@ async def test_generate_profile_happy_path(install_llm):
     assert "mash_additions" in schema["properties"]
     assert "mash_rests" in schema["properties"]
     assert "boil_additions" in schema["properties"]
+    assert "ingredients" in schema["properties"]
+    assert "mash_out_temperature_c" in schema["properties"]
+    assert "sparge_temperature_c" in schema["properties"]
     assert "include_sparge" in schema["properties"]
     assert "include_mash_out" in schema["properties"]
+    assert set(schema["$defs"]["IngredientSpec"]["required"]) == {"name", "category"}
     rest_schema = schema["$defs"]["RestSpec"]["properties"]
     assert "Do not omit or guess" in rest_schema["duration_seconds"]["description"]
     assert "45 °C for 15 minutes" in rest_schema["duration_seconds"]["description"]
@@ -819,7 +850,7 @@ async def test_generate_profile_happy_path(install_llm):
     assert "Never submit a boil addition with missing timing fields" in wizard_system
     assert "Use `mash_additions`" in wizard_system
     validator_system = RECIPE_WIZARD_VALIDATOR_PROMPT
-    assert "compiler_defaults" in validator_system
+    assert "exporter-specific steps" in validator_system
     assert "expected and actual values already match" in validator_system
     assert "boils for N minutes" in wizard_system
     semantic_request = factory.requests[1]
@@ -827,25 +858,19 @@ async def test_generate_profile_happy_path(install_llm):
     assert semantic_request["max_tokens"] == 16_384
     semantic_content = semantic_request["messages"][1]["content"]
     assert "<source_description>" in semantic_content
-    assert "<compiler_defaults>" in semantic_content
     assert "<candidate_spec>" in semantic_content
-    assert "<candidate_profile>" in semantic_content
-    defaults_json = semantic_content.split("<compiler_defaults>", 1)[1].split(
-        "</compiler_defaults>", 1
-    )[0]
-    compiler_defaults = json.loads(defaults_json)
+    assert "<compiler_defaults>" not in semantic_content
+    assert "<candidate_profile>" not in semantic_content
     spec_json = semantic_content.split("<candidate_spec>", 1)[1].split("</candidate_spec>", 1)[0]
     candidate_spec = json.loads(spec_json)
-    mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
-    sparge = next(step for step in profile["steps"] if step["name"] == "Sparge")
-    boil = next(step for step in profile["steps"] if step["name"] == "Boil")
-    cooling = profile["steps"][-1]
-    assert compiler_defaults["mash_out"]["temperature_c"] == mash_out["temperature"]
-    assert compiler_defaults["mash_out"]["duration_seconds"] == mash_out["length"]
-    assert compiler_defaults["sparge"]["temperature_c"] == sparge["temperature"]
-    assert compiler_defaults["boil"]["temperature_c"] == boil["temperature"]
-    assert compiler_defaults["cooling"]["temperature_c"] == cooling["temperature"]
+    assert [ingredient["name"] for ingredient in candidate_spec["ingredients"]] == [
+        ingredient["name"] for ingredient in _VALID_RECIPE_SPEC["ingredients"]
+    ]
     assert candidate_spec["boil_additions"] == _VALID_RECIPE_SPEC["boil_additions"]
+    assert candidate_spec["include_sparge"] is True
+    assert candidate_spec["include_mash_out"] is True
+    assert candidate_spec["mash_out_temperature_c"] == 78
+    assert candidate_spec["sparge_temperature_c"] == 78
     assert "Yeast and other" in semantic_request["messages"][0]["content"]
 
 
@@ -1023,6 +1048,10 @@ _WIZARD_ERROR_CASES = [
 
 _WIZARD_SPEC_ERROR_CASES = [
     (
+        lambda d: d["ingredients"][0].pop("unit"),
+        "ingredient amount and unit must both be provided or both be null",
+    ),
+    (
         lambda d: d["boil_additions"][0].__setitem__("offset_seconds", 3700),
         "boil addition occurs outside the boil",
     ),
@@ -1037,15 +1066,15 @@ _WIZARD_SPEC_ERROR_CASES = [
 
 
 @pytest.mark.parametrize("mutator, expected", _WIZARD_SPEC_ERROR_CASES)
-def test_compile_recipe_rejects_invalid_semantic_spec(mutator, expected):
+def test_compile_brewzilla_profile_rejects_invalid_semantic_spec(mutator, expected):
     data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
     mutator(data)
     with pytest.raises(ValueError) as error:
-        compile_recipe(RecipeSpec.model_validate(data))
+        compile_brewzilla_profile(RecipeSpec.model_validate(data))
     assert expected in str(error.value)
 
 
-def test_compile_recipe_preserves_explicit_low_mash_in():
+def test_compile_brewzilla_profile_preserves_explicit_low_mash_in():
     data = {
         **_VALID_RECIPE_SPEC,
         "mash_in_temperature_c": 38,
@@ -1058,7 +1087,7 @@ def test_compile_recipe_preserves_explicit_low_mash_in():
         ],
     }
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     assert [step["name"] for step in profile["steps"][:2]] == [
         "Mash In",
@@ -1118,11 +1147,11 @@ async def test_generate_profile_repairs_semantic_error(install_llm):
     assert "expected 3000, actual 600" in retry_message
 
 
-def test_compile_recipe_applies_power_and_pid_rules():
+def test_compile_brewzilla_profile_applies_power_and_pid_rules():
     data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
     data.update(heat_power_pct=90, rest_power_pct=50, mash_pid_enabled=True)
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     mash_in = profile["steps"][0]
     first_rest = profile["steps"][1]
@@ -1138,9 +1167,10 @@ def test_compile_recipe_applies_power_and_pid_rules():
     assert boil["pidEnabled"] is False
 
 
-def test_compile_recipe_applies_defaults_and_boil_timing():
+def test_compile_brewzilla_profile_applies_defaults_and_boil_timing():
     data = json.loads(json.dumps(_VALID_RECIPE_SPEC))
     data["mash_in_temperature_c"] = None
+    data["mash_in_alert_text"] = None
     data["mash_out_end_alert_text"] = "Mash Out завершён"
     data["boil_additions"].append(
         {
@@ -1150,9 +1180,10 @@ def test_compile_recipe_applies_defaults_and_boil_timing():
         }
     )
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     assert profile["steps"][0]["temperature"] == 70
+    assert profile["steps"][0]["alerts"][0]["alertText"] == "Add grain"
     boil = next(step for step in profile["steps"] if step["name"] == "Boil")
     assert [alert["length"] for alert in boil["alerts"]] == [2700, 600]
     mash_out = next(step for step in profile["steps"] if step["name"] == "Mash Out")
@@ -1161,7 +1192,22 @@ def test_compile_recipe_applies_defaults_and_boil_timing():
     assert profile["steps"][-1]["temperature"] == 20
 
 
-def test_compile_recipe_preserves_explicit_mash_additions():
+def test_compile_brewzilla_profile_preserves_stage_temperatures():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "mash_out_temperature_c": 76,
+        "sparge_temperature_c": 77,
+    }
+
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
+
+    assert (
+        next(step for step in profile["steps"] if step["name"] == "Mash Out")["temperature"] == 76
+    )
+    assert next(step for step in profile["steps"] if step["name"] == "Sparge")["temperature"] == 77
+
+
+def test_compile_brewzilla_profile_preserves_explicit_mash_additions():
     data = {
         **_VALID_RECIPE_SPEC,
         "mash_additions": [
@@ -1169,7 +1215,7 @@ def test_compile_recipe_preserves_explicit_mash_additions():
         ],
     }
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     alerts = profile["steps"][0]["alerts"]
     assert alerts[1]["alertText"] == "Add prepared adjunct"
@@ -1177,7 +1223,34 @@ def test_compile_recipe_preserves_explicit_mash_additions():
     assert alerts[1]["temperature"] == 33
 
 
-def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
+def test_compile_brewzilla_profile_preserves_whirlpool_without_temperature():
+    data = {
+        **_VALID_RECIPE_SPEC,
+        "whirlpool": {
+            "name": "Вирпул",
+            "duration_seconds": 300,
+            "ingredients": [
+                {
+                    "name": "Cascade",
+                    "amount": 50,
+                    "unit": "г",
+                    "category": "hop",
+                    "use": "Вирпул",
+                }
+            ],
+        },
+    }
+
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
+
+    whirlpool = next(step for step in profile["steps"] if step["name"] == "Вирпул")
+    assert whirlpool["temperature"] == 100
+    assert whirlpool["length"] == 300
+    assert whirlpool["heatingUtilisation"] == 0
+    assert whirlpool["pidEnabled"] is False
+
+
+def test_compile_brewzilla_profile_preserves_blanche_alerts_and_final_mash_out():
     data = {
         **_VALID_RECIPE_SPEC,
         "mash_in_temperature_c": 48,
@@ -1198,7 +1271,7 @@ def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
         "sparge_alert_text": "Начать промывку",
     }
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     assert profile["steps"][1]["name"] == "Пауза 45 °C"
     assert profile["steps"][1]["heatingUtilisation"] == 50
@@ -1229,7 +1302,7 @@ def test_compile_recipe_preserves_blanche_alerts_and_final_mash_out():
     )
 
 
-def test_compile_recipe_honors_disabled_setup_features():
+def test_compile_brewzilla_profile_honors_disabled_setup_features():
     data = {
         **_VALID_RECIPE_SPEC,
         "mash_in_alert_text": None,
@@ -1238,7 +1311,7 @@ def test_compile_recipe_honors_disabled_setup_features():
         "include_mash_out": False,
     }
 
-    profile = compile_recipe(RecipeSpec.model_validate(data))
+    profile = compile_brewzilla_profile(RecipeSpec.model_validate(data))
 
     names = [step["name"] for step in profile["steps"]]
     assert "Mash Out" not in names
@@ -1340,3 +1413,9 @@ async def test_generate_profile_repairs_missing_alert_text(install_llm):
     assert profile["steps"][4]["alerts"][0]["alertText"]
     retry_message = factory.requests[1]["messages"][-1]["content"]
     assert "String should have at least 1 character" in retry_message
+
+
+def test_recipe_wizard_accepts_detailed_human_recipe():
+    request = RecipeWizardRequest(description="Рецепт: " + "а" * 7_500)
+
+    assert len(request.description) > 4_000
