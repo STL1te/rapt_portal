@@ -820,6 +820,28 @@ async def test_generate_profile_repairs_semantic_error(install_llm):
     assert "expected 3000, actual 600" in retry_message
 
 
+async def test_generate_profile_returns_best_effort_after_second_semantic_mismatch(
+    install_llm, caplog
+):
+    """Second attempt still fails semantic validation, but extraction/compile succeeded:
+    hand back the imperfect profile instead of a dead end (unlike a structural failure,
+    which has no profile to salvage)."""
+    install_llm(
+        [_recipe_message()],
+        [
+            _message(
+                '{"valid":false,"errors":["Boil spice alert length: expected 3000, actual 600."]}'
+            )
+        ],
+        [_recipe_message()],
+        [_message('{"valid":false,"errors":["still off by one field"]}')],
+    )
+    profile, _recipe = await generate_profile("Кип 60 минут. Специи за 10 минут до конца кипа.")
+
+    assert profile["steps"][4]["length"] == 3600
+    assert "still off by one field" in caplog.text
+
+
 async def test_generate_profile_gives_up_after_second_failure(install_llm):
     install_llm([_message('{"name":"bad"}')], [_message("[]")])
     with pytest.raises(ValueError, match="Модель не смогла собрать корректный профиль"):

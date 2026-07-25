@@ -254,15 +254,14 @@ async def _generate_once(
     *,
     retry: bool,
     user_overrides: BrewZillaOverrides | None,
-) -> tuple[SubmitRecipe, dict]:
+) -> tuple[SubmitRecipe, dict, list[str]]:
     submit = await _extract_recipe(_recipe_wizard_messages(description, correction))
     on_progress and on_progress("checking_fixed_structure" if retry else "checking_structure")
     on_progress and on_progress("checking_fixed_recipe" if retry else "checking_recipe")
     semantic_errors = await _semantic_recipe_errors(description, submit)
-    if semantic_errors:
-        raise ValueError("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
     overrides = merge_overrides(user_overrides, submit.brewzilla_overrides)
-    return submit, compile_brewzilla_profile(submit.recipe, overrides)
+    profile = compile_brewzilla_profile(submit.recipe, overrides)
+    return submit, profile, semantic_errors
 
 
 async def generate_profile(
@@ -272,9 +271,11 @@ async def generate_profile(
 ) -> tuple[dict, dict]:
     on_progress and on_progress("generating")
     try:
-        submit, profile = await _generate_once(
+        submit, profile, semantic_errors = await _generate_once(
             description, None, on_progress, retry=False, user_overrides=user_overrides
         )
+        if semantic_errors:
+            raise ValueError("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
         return profile, to_beerjson_document(submit.recipe)
     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
         on_progress and on_progress("repairing")
@@ -284,10 +285,18 @@ async def generate_profile(
             f"The previous attempt failed:\n{error}"
         )
         try:
-            submit, profile = await _generate_once(
+            submit, profile, semantic_errors = await _generate_once(
                 description, correction, on_progress, retry=True, user_overrides=user_overrides
             )
-            return profile, to_beerjson_document(submit.recipe)
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as retry_error:
             logger.warning("Recipe wizard returned invalid specification twice: %s", retry_error)
             raise ValueError("Модель не смогла собрать корректный профиль") from retry_error
+        if semantic_errors:
+            # Extraction succeeded but the repaired recipe still doesn't clear semantic
+            # validation; hand back the imperfect profile anyway so the user can adjust
+            # it themselves instead of getting a dead end.
+            logger.warning(
+                "Recipe wizard accepted a profile with unresolved mismatches: %s",
+                semantic_errors,
+            )
+        return profile, to_beerjson_document(submit.recipe)
