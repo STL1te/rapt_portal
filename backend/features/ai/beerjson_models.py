@@ -135,7 +135,7 @@ class MiscellaneousAdditionType(_BJ):
 
 
 class IngredientsType(_BJ):
-    fermentable_additions: list[FermentableAdditionType] = Field(min_length=1)
+    fermentable_additions: list[FermentableAdditionType] | None = None
     hop_additions: list[HopAdditionType] | None = None
     culture_additions: list[CultureAdditionType] | None = None
     miscellaneous_additions: list[MiscellaneousAdditionType] | None = None
@@ -148,7 +148,8 @@ class MashStepType(_BJ):
     type: Literal["infusion", "temperature", "decoction", "souring mash", "souring wort"]
     amount: VolumeType | None = None
     step_temperature: TemperatureType
-    step_time: TimeType
+    # None = untimed step (e.g. "mash in at 50°C"): compiles to a manual-advance rest
+    step_time: TimeType | None = None
     ramp_time: TimeType | None = None
     end_temperature: TemperatureType | None = None
 
@@ -206,7 +207,9 @@ class EfficiencyType(_BJ):
 class RecipeModel(_BJ):
     """Subset of BeerJSON RecipeType. This is the wizard's canonical recipe."""
 
-    name: str = Field(min_length=1, max_length=100)
+    # Extraction is lenient: partial drafts (e.g. mash rests only) are valid input.
+    # Completeness is enforced at BeerJSON export, not here.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     type: Literal[
         "all grain",
         "partial mash",
@@ -226,8 +229,8 @@ class RecipeModel(_BJ):
     final_gravity: GravityType | None = None
     alcohol_by_volume: PercentType | None = None
     color_estimate: ColorType | None = None
-    notes: str = Field(min_length=12, max_length=2000)
-    ingredients: IngredientsType
+    notes: str | None = Field(default=None, max_length=2000)
+    ingredients: IngredientsType | None = None
     mash: MashProcedureType | None = None
     boil: BoilProcedureType | None = None
     fermentation: FermentationProcedureType | None = None
@@ -241,10 +244,12 @@ class RecipeModel(_BJ):
 
 
 _EXPORT_DEFAULTS = {
+    "name": lambda: "Recipe",
     "author": lambda: "Unknown",
     "type": lambda: "all grain",
     "batch_size": lambda: {"unit": "l", "value": 20},
     "efficiency": lambda: {"brewhouse": {"unit": "%", "value": 70}},
+    "ingredients": lambda: {"fermentable_additions": []},
 }
 _UNKNOWN_CULTURE_TYPE = "other"
 _UNKNOWN_CULTURE_FORM = "culture"
@@ -308,7 +313,7 @@ def to_beerjson_document(recipe: RecipeModel) -> dict:
     if fermentation is not None:
         fermentation.setdefault("name", _DEFAULT_FERMENTATION_NAME)
 
-    for fermentable in data["ingredients"]["fermentable_additions"]:
+    for fermentable in data["ingredients"].setdefault("fermentable_additions", []):
         if "color" not in fermentable:
             fermentable["color"] = _unknown_color()
         if "yield" not in fermentable:

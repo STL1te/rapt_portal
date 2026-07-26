@@ -11,8 +11,11 @@ setlocal
 cd /d "%~dp0.."
 
 set PYTHONPATH=.
-set CORPUS=D:\Work\projects\beer_recipes_data\recipes_detail.jsonl
-set OUTPUT=D:\Work\projects\beer_recipes_data\distill.jsonl
+set CORPUS=D:\Work\projects\beer_knowledge\data\recipes_detail.jsonl
+set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\distill.jsonl
+rem EN corpus (use the same --shuffle seed as the previous EN run to keep subsets nested):
+rem set CORPUS=D:\Work\projects\beer_knowledge\data\beersfriend_detail.jsonl
+rem set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\distill_en.jsonl
 
 set ARGS=%*
 if "%~1"=="" set ARGS=--count 36 --concurrency 3

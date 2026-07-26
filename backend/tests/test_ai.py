@@ -772,7 +772,8 @@ async def test_recipe_wizard_stream_emits_progress(install_llm):
 
 async def test_generate_profile_repairs_structural_error(install_llm):
     factory = install_llm(
-        [_recipe_message({"recipe": {"name": "bad"}})],
+        # partial recipes are valid now, so plant a genuinely broken step instead
+        [_recipe_message({"recipe": {"mash": {"mash_steps": [{"type": "infusion"}]}}})],
         [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )

@@ -14,6 +14,18 @@ from features.ai.recipe_wizard import _generate_once
 from features.ai.router import RecipeWizardRequest
 
 
+async def _strict_generate(source: str, correction: str | None, *, retry: bool):
+    """Distillation-grade generation: specs are training targets, so unresolved
+    semantic mismatches are failures here even though production returns them
+    best-effort."""
+    submit, profile, semantic_errors = await _generate_once(
+        source, correction, None, retry=retry, user_overrides=None
+    )
+    if semantic_errors:
+        raise ValueError("Recipe mismatches:\n- " + "\n- ".join(semantic_errors))
+    return submit, profile
+
+
 def _source(row: dict) -> str:
     if "BrewMethod" in row:  # Brewer's Friend (English) corpus
         return _source_en(row)
@@ -197,7 +209,7 @@ async def main() -> None:
                 async with semaphore:
                     try:
                         submit, profile = await asyncio.wait_for(
-                            _generate_once(source, None, None, retry=False, user_overrides=None),
+                            _strict_generate(source, None, retry=False),
                             timeout=args.timeout,
                         )
                     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
@@ -208,9 +220,7 @@ async def main() -> None:
                             f"The previous attempt failed:\n{error}"
                         )
                         submit, profile = await asyncio.wait_for(
-                            _generate_once(
-                                source, correction, None, retry=True, user_overrides=None
-                            ),
+                            _strict_generate(source, correction, retry=True),
                             timeout=args.timeout,
                         )
                 result.update(

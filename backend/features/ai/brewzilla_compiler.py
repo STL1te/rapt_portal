@@ -99,7 +99,7 @@ def _rest_step(
     *,
     name: str,
     temperature_c: float,
-    duration_seconds: int,
+    duration_seconds: int | None,
     heating: float | None,
     pid: bool,
     end_alerts: list[dict],
@@ -129,8 +129,8 @@ def _rest_step(
         _step(
             name,
             temperature_c,
-            end_type="Duration",
-            duration_type="Temperature",
+            end_type="Duration" if duration_seconds is not None else "Manual",
+            duration_type="Temperature" if duration_seconds is not None else "Manual",
             length=duration_seconds,
             heating=heating,
             pid=pid,
@@ -167,7 +167,8 @@ def compile_brewzilla_profile(
                 ov.mash_out_temperature_c, to_celsius(recognized.step_temperature)
             )
             mash_out_duration_seconds = _eff(
-                ov.mash_out_duration_seconds, to_seconds(recognized.step_time)
+                ov.mash_out_duration_seconds,
+                to_seconds(recognized.step_time) if recognized.step_time else None,
             )
         else:
             mash_out_name = "Mash Out"
@@ -221,7 +222,7 @@ def compile_brewzilla_profile(
             steps,
             name=rest.name or f"{to_celsius(rest.step_temperature):g} °C",
             temperature_c=to_celsius(rest.step_temperature),
-            duration_seconds=to_seconds(rest.step_time),
+            duration_seconds=to_seconds(rest.step_time) if rest.step_time else None,
             heating=ov.rest_power_pct,
             pid=_eff(ov.mash_pid_enabled, False),
             end_alerts=end_alerts,
@@ -292,10 +293,11 @@ def compile_brewzilla_profile(
     has_whirlpool = len(boil_steps) == 2
     boil_alerts: list[dict] = []
     whirlpool_additions: list[tuple] = []
+    ingredients = recipe.ingredients
     additions = [
-        *recipe.ingredients.fermentable_additions,
-        *(recipe.ingredients.hop_additions or []),
-        *(recipe.ingredients.miscellaneous_additions or []),
+        *((ingredients.fermentable_additions if ingredients else None) or []),
+        *((ingredients.hop_additions if ingredients else None) or []),
+        *((ingredients.miscellaneous_additions if ingredients else None) or []),
     ]
     for addition in additions:
         timing = addition.timing
@@ -396,8 +398,8 @@ def compile_brewzilla_profile(
         step["order"] = order
     profile = ProfileIn.model_validate(
         {
-            "name": recipe.name.strip(),
-            "description": recipe.notes.strip(),
+            "name": (recipe.name or "Recipe").strip(),
+            "description": (recipe.notes or "").strip(),
             "public": False,
             "profile_type_id": None,
             "profile_type_name": None,
