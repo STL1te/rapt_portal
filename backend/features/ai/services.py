@@ -37,7 +37,7 @@ from features.profiles.services import profile_dict
 logger = logging.getLogger(__name__)
 
 AssessmentKind = Literal["brew", "fermentation"]
-SubjectType = Literal["brew_session", "fermentation_session", "recipe"]
+SubjectType = Literal["brew_session", "fermentation_session", "profile"]
 
 _MAX_TELEMETRY_POINTS = 48
 _MAX_TOOL_ROUNDS = 4
@@ -151,7 +151,7 @@ def _localized_default_question(subject_type: SubjectType, completed: bool, loca
     language = locale.lower().split("-", 1)[0]
     questions = DEFAULT_QUESTIONS.get(language, DEFAULT_QUESTIONS["en"])
     subject = subject_type.removesuffix("_session")
-    state = "default" if subject == "recipe" else ("done" if completed else "active")
+    state = "default" if subject == "profile" else ("done" if completed else "active")
     return questions[subject][state]
 
 
@@ -287,7 +287,7 @@ def _subject_exists(db, subject_type: SubjectType, subject_id: str) -> bool:
     model = {
         "brew_session": BrewSession,
         "fermentation_session": HydrometerSession,
-        "recipe": Profile,
+        "profile": Profile,
     }[subject_type]
     return db.get(model, subject_id) is not None
 
@@ -323,7 +323,7 @@ def _subject_settings(db, conversation: AiConversation, locale: str = "ru") -> S
         system_prompt=RECIPE_REVIEW_SYSTEM_PROMPT,
         context=build_recipe_context(db, conversation.subject_id),
         context_tag="recipe_context",
-        displayed_default_question=_localized_default_question("recipe", False, locale),
+        displayed_default_question=_localized_default_question("profile", False, locale),
         model_default_instruction=RECIPE_REVIEW_DEFAULT,
         tools=None,
         current_session_id=None,

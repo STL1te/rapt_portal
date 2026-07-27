@@ -1,4 +1,4 @@
-export type AiSubjectType = 'brew_session' | 'fermentation_session' | 'recipe'
+export type AiSubjectType = 'brew_session' | 'fermentation_session' | 'profile'
 
 export type AiMessage = {
   id: number

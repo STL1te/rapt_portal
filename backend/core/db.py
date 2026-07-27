@@ -180,7 +180,7 @@ class AiConversation(Base):
     __table_args__ = (
         UniqueConstraint("subject_type", "subject_id", name="uq_ai_conversation_subject"),
         CheckConstraint(
-            "subject_type IN ('brew_session', 'fermentation_session', 'recipe')",
+            "subject_type IN ('brew_session', 'fermentation_session', 'profile')",
             name="ck_ai_conversation_subject_type",
         ),
     )

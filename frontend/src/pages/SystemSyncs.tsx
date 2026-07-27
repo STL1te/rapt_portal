@@ -273,7 +273,7 @@ export default function SystemSyncs() {
 
         <SyncCard
           title="Sync profiles"
-          description="Обновляет локальную библиотеку рецептов (с алертами) из portal API."
+          description="Обновляет локальную библиотеку профилей (с алертами) из portal API."
           actionLabel="Запустить"
           disabled={isActive(profileJob) || !portalToken.trim()}
           statusText={profileState.text}

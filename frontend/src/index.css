@@ -1495,20 +1495,20 @@ th {
   color: var(--accent);
 }
 
-.recipe-actions {
+.profile-actions {
   display: flex;
   gap: var(--space-xs);
   flex-wrap: wrap;
   margin-bottom: var(--space-sm);
 }
 
-.recipe-token {
+.profile-token {
   max-width: 640px;
   margin-bottom: var(--space-md);
 }
 
 .page-head-actions button,
-.recipe-actions button,
+.profile-actions button,
 .pagination-actions button,
 .steps-head button,
 .step-editor-head button,
@@ -1524,14 +1524,14 @@ th {
 }
 
 .page-head-actions button:hover:not(:disabled),
-.recipe-actions button:hover:not(:disabled),
+.profile-actions button:hover:not(:disabled),
 .pagination-actions button:hover:not(:disabled),
 .step-editor-head button:hover:not(:disabled),
 .icon-btn:hover:not(:disabled) {
   border-color: var(--accent);
 }
 
-.recipe-actions button:disabled,
+.profile-actions button:disabled,
 .pagination-actions button:disabled,
 .step-editor-head button:disabled,
 .icon-btn:disabled {
@@ -1663,12 +1663,12 @@ th {
 }
 
 /* spacing between fields in the recipe info form */
-.recipe-form .field,
-.recipe-form .field-row {
+.profile-form .field,
+.profile-form .field-row {
   margin-bottom: var(--space-md);
 }
-.recipe-form .field:last-child,
-.recipe-form .field-row:last-child {
+.profile-form .field:last-child,
+.profile-form .field-row:last-child {
   margin-bottom: 0;
 }
 
@@ -1730,28 +1730,28 @@ th {
   margin: var(--space-2xs) 0 0;
 }
 
-.recipe-wizard-panel {
+.profile-wizard-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
-.recipe-wizard-title {
+.profile-wizard-title {
   margin: 0;
   font-size: var(--text-lg);
 }
 
-.recipe-wizard-title i {
+.profile-wizard-title i {
   margin-right: var(--space-xs);
   color: var(--accent);
 }
 
-.recipe-wizard-text {
+.profile-wizard-text {
   margin: 0;
   color: var(--muted);
 }
 
-.recipe-wizard-progress {
+.profile-wizard-progress {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--space-2xs) var(--space-sm);
@@ -1762,28 +1762,28 @@ th {
   background: color-mix(in srgb, var(--accent) 7%, var(--panel));
 }
 
-.recipe-wizard-progress > i {
+.profile-wizard-progress > i {
   grid-row: 1;
   color: var(--accent);
   font-size: var(--text-lg);
 }
 
-.recipe-wizard-progress div {
+.profile-wizard-progress div {
   display: flex;
   flex-direction: column;
   gap: var(--space-3xs);
 }
 
-.recipe-wizard-progress strong {
+.profile-wizard-progress strong {
   font-size: var(--text-sm);
 }
 
-.recipe-wizard-progress div span {
+.profile-wizard-progress div span {
   color: var(--muted);
   font-size: var(--text-xs);
 }
 
-.recipe-wizard-progress-bar {
+.profile-wizard-progress-bar {
   grid-column: 1 / -1;
   position: relative;
   height: 3px;
@@ -1793,17 +1793,17 @@ th {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.recipe-wizard-progress-bar::after {
+.profile-wizard-progress-bar::after {
   position: absolute;
   width: 35%;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
   content: '';
-  animation: recipe-wizard-progress 1.2s ease-in-out infinite;
+  animation: profile-wizard-progress 1.2s ease-in-out infinite;
 }
 
-@keyframes recipe-wizard-progress {
+@keyframes profile-wizard-progress {
   from {
     transform: translateX(-110%);
   }
@@ -1813,19 +1813,19 @@ th {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .recipe-wizard-progress-bar::after {
+  .profile-wizard-progress-bar::after {
     width: 100%;
     animation: none;
   }
 }
 
-.recipe-wizard-actions {
+.profile-wizard-actions {
   display: flex;
   gap: var(--space-xs);
   flex-wrap: wrap;
 }
 
-.recipe-wizard-actions button:not(.btn-solid) {
+.profile-wizard-actions button:not(.btn-solid) {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -1835,11 +1835,11 @@ th {
   cursor: pointer;
 }
 
-.recipe-wizard-actions button:not(.btn-solid):hover:not(:disabled) {
+.profile-wizard-actions button:not(.btn-solid):hover:not(:disabled) {
   border-color: var(--accent);
 }
 
-.recipe-wizard-actions button:disabled {
+.profile-wizard-actions button:disabled {
   cursor: default;
   opacity: 0.5;
 }
@@ -2181,7 +2181,7 @@ th {
 }
 
 @media (max-width: 800px) {
-  .recipe-wizard-actions .btn-solid {
+  .profile-wizard-actions .btn-solid {
     flex: 1 1 220px;
   }
 }

@@ -1,14 +1,7 @@
 import { type DragEvent, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  createProfile,
-  generateProfile,
-  getProfile,
-  getProfileTypes,
-  updateProfile,
-  type RecipeGenerationStage,
-} from '@/api'
+import { createProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
 import { CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
 import type {
   AlertTrigger,
@@ -98,14 +91,6 @@ const END_SHORT: Record<string, string> = {
 }
 // RAPT's Heating % dropdown: Manual Control (→ null) or 100..0 step 5
 const HEATING_OPTIONS = Array.from({ length: 21 }, (_, i) => 100 - i * 5)
-const WIZARD_STAGE_LABEL: Record<RecipeGenerationStage, string> = {
-  generating: 'Модель собирает профиль…',
-  checking_structure: 'Проверяем шаги и параметры…',
-  checking_recipe: 'Сверяем профиль с исходным рецептом…',
-  repairing: 'Исправляем найденные несоответствия…',
-  checking_fixed_structure: 'Проверяем исправленные шаги…',
-  checking_fixed_recipe: 'Повторно сверяем с рецептом…',
-}
 
 // step duration (stored in seconds) is entered in a chosen unit (RAPT: min/hr/day)
 const DUR_UNIT_SEC = { minutes: 60, hours: 3600, days: 86400 } as const
@@ -630,12 +615,15 @@ function StepModal({
   )
 }
 
-export default function RecipeEditor() {
+export default function ProfileEditor() {
   const { id } = useParams<{ id: string }>()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  useTitle(isEdit ? 'Редактирование рецепта' : 'Новый рецепт')
+  useTitle(isEdit ? 'Редактирование профиля' : 'Новый профиль')
+
+  // profile handed over by the AI wizard (never persisted — save() does that)
+  const generated = (useLocation().state as { generated?: ProfileInput } | null)?.generated ?? null
 
   const { data: existing } = useQuery({
     queryKey: ['profile', id],
@@ -656,10 +644,6 @@ export default function RecipeEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
-  const [wizardOpen, setWizardOpen] = useState(false)
-  const [wizardDescription, setWizardDescription] = useState('')
-  const [wizardLoading, setWizardLoading] = useState(false)
-  const [wizardStage, setWizardStage] = useState<RecipeGenerationStage | null>(null)
   const markDirty = () => setDirty(true)
 
   // selected profile type drives the whole form shape (steps vs Pill alerts, etc.)
@@ -700,30 +684,29 @@ export default function RecipeEditor() {
     setAlerts(existing.alerts)
   }, [existing])
 
-  // default the type picker to the first known type when creating
+  // default the type picker when creating; the wizard only ever emits BrewZilla profiles
   useEffect(() => {
-    if (!isEdit && !typeId && types?.length) setTypeId(types[0].id)
-  }, [isEdit, typeId, types])
+    if (isEdit || typeId || !types?.length) return
+    const brewzilla = types.find((t) => t.name === 'BrewZilla')
+    setTypeId((generated && brewzilla?.id) || types[0].id)
+  }, [isEdit, typeId, types, generated])
 
+  // seed the form from the AI wizard's result, handed over via navigation state
   useEffect(() => {
-    if (kind !== 'brewzilla') setWizardOpen(false)
-  }, [kind])
+    if (!generated) return
+    setName(generated.name ?? '')
+    setDescription(generated.description ?? '')
+    setSteps(
+      generated.steps
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((step, order) => ({ ...step, order, _uid: uid() })),
+    )
+    setAlerts(generated.alerts)
+    setDirty(true)
+  }, [generated])
 
   const reindex = (s: EditStep[]) => s.map((st, idx) => ({ ...st, order: idx }))
-
-  const applyGeneratedProfile = (profile: ProfileInput) => {
-    const nextSteps = profile.steps
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .map((step, order) => ({ ...step, order, _uid: uid() }))
-
-    setName(profile.name ?? '')
-    setDescription(profile.description ?? '')
-    setSteps(nextSteps)
-    setAlerts(profile.alerts)
-    setEditing(null)
-    markDirty()
-  }
 
   // open a step in the modal, editing a draft copy so Отмена discards changes
   const openStep = (st: EditStep) =>
@@ -795,40 +778,9 @@ export default function RecipeEditor() {
     })
   }
 
-  const hasFormData =
-    name.trim() !== '' || description.trim() !== '' || steps.length > 0 || alerts.length > 0
-
-  async function submitWizard() {
-    setError(null)
-    const trimmedDescription = wizardDescription.trim()
-    if (trimmedDescription.length < 8) {
-      setError('Опишите варку минимум в 8 символах')
-      return
-    }
-    if (
-      hasFormData &&
-      !window.confirm('Успешный результат мастера заменит текущие поля формы. Продолжить?')
-    ) {
-      return
-    }
-
-    setWizardLoading(true)
-    setWizardStage('generating')
-    try {
-      const profile = await generateProfile(trimmedDescription, setWizardStage)
-      applyGeneratedProfile(profile)
-      setWizardOpen(false)
-    } catch {
-      setError('Не удалось собрать профиль через AI-мастер')
-    } finally {
-      setWizardLoading(false)
-      setWizardStage(null)
-    }
-  }
-
   async function save() {
     setError(null)
-    if (name.trim().length < 4) return setError('Название рецепта: от 4 до 50 символов')
+    if (name.trim().length < 4) return setError('Название профиля: от 4 до 50 символов')
     if (!typeId) return setError('Выберите тип профиля')
     const payload: ProfileInput = {
       name: name.trim(),
@@ -849,7 +801,7 @@ export default function RecipeEditor() {
       setDirty(false) // saved — don't warn on the navigation below
       await queryClient.invalidateQueries({ queryKey: ['profiles'] })
       await queryClient.invalidateQueries({ queryKey: ['profile', saved.id] })
-      navigate(`/recipes/${saved.id}`)
+      navigate(`/profiles/${saved.id}`)
     } catch (e) {
       setError(String(e))
       setSaving(false)
@@ -858,7 +810,7 @@ export default function RecipeEditor() {
 
   // reasons saving is blocked — shown proactively next to the button (RAPT-style)
   const issues: string[] = []
-  if (name.trim().length < 4) issues.push('название рецепта — минимум 4 символа')
+  if (name.trim().length < 4) issues.push('название профиля — минимум 4 символа')
   if (!typeId) issues.push('не выбран тип профиля')
   if (kind === 'pill') {
     if (alerts.length === 0) issues.push('добавьте хотя бы один алерт')
@@ -877,70 +829,10 @@ export default function RecipeEditor() {
 
       <div className="page-head">
         <div>
-          <h2>{isEdit ? 'Редактирование рецепта' : 'Новый рецепт'}</h2>
+          <h2>{isEdit ? 'Редактирование профиля' : 'Новый профиль'}</h2>
           <p className="editor-subtitle">Пошаговый профиль управления температурой для брожения.</p>
         </div>
-        {!isEdit && kind === 'brewzilla' ? (
-          <div className="page-head-actions">
-            <button
-              type="button"
-              onClick={() => setWizardOpen((open) => !open)}
-              disabled={wizardLoading}
-            >
-              <i className="fa-solid fa-wand-magic-sparkles" /> AI-мастер
-            </button>
-          </div>
-        ) : null}
       </div>
-
-      {wizardOpen ? (
-        <section className="panel recipe-wizard-panel">
-          <h3 className="recipe-wizard-title">
-            <i className="fa-solid fa-wand-magic-sparkles" /> Собрать профиль с AI
-          </h3>
-          <p className="recipe-wizard-text">
-            Опишите варку обычным текстом. Результат заполнит форму и не сохранится сам.
-          </p>
-          {error ? <p className="error">{error}</p> : null}
-          <label className="field">
-            <span>Описание варки</span>
-            <textarea
-              rows={6}
-              placeholder="Американский pale ale, 23 литра. Одноступенчатое затирание 67 °C 60 минут, mash-out 78 °C 10 минут, кип 60 минут. Алерт на добавление хмеля за 15 минут до конца кипа."
-              value={wizardDescription}
-              disabled={wizardLoading}
-              onChange={(e) => setWizardDescription(e.target.value)}
-            />
-          </label>
-          {wizardLoading && wizardStage ? (
-            <div className="recipe-wizard-progress" role="status" aria-live="polite">
-              <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
-              <div>
-                <strong>{WIZARD_STAGE_LABEL[wizardStage]}</strong>
-                <span>Это может занять несколько минут.</span>
-              </div>
-              <span className="recipe-wizard-progress-bar" aria-hidden="true" />
-            </div>
-          ) : null}
-          <div className="recipe-wizard-actions">
-            <button type="button" disabled={wizardLoading} onClick={() => setWizardOpen(false)}>
-              Отмена
-            </button>
-            <button
-              type="button"
-              className="btn-solid"
-              disabled={wizardLoading}
-              onClick={() => void submitWizard()}
-            >
-              <i
-                className={`fa-solid ${wizardLoading ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}
-                aria-hidden="true"
-              />{' '}
-              {wizardLoading ? 'Собираем…' : 'Собрать профиль'}
-            </button>
-          </div>
-        </section>
-      ) : null}
 
       <section className="panel">
         <h3 className="panel-title">Тип профиля</h3>
@@ -951,7 +843,6 @@ export default function RecipeEditor() {
               type="button"
               aria-pressed={typeId === t.id}
               className={`pill${typeId === t.id ? ' active' : ''}`}
-              disabled={wizardLoading}
               onClick={() => {
                 markDirty()
                 setTypeId(t.id)
@@ -963,7 +854,7 @@ export default function RecipeEditor() {
         </div>
       </section>
 
-      <section className="panel recipe-form">
+      <section className="panel profile-form">
         <h3 className="panel-title">Основные данные</h3>
         <label className="field">
           <span>Название</span>
@@ -983,7 +874,7 @@ export default function RecipeEditor() {
           <div>
             <div className="switch-label">Публичный профиль</div>
             <div className="switch-desc">
-              Другие пользователи смогут просматривать и копировать рецепт.
+              Другие пользователи смогут просматривать и копировать профиль.
             </div>
           </div>
           <button
@@ -1125,7 +1016,7 @@ export default function RecipeEditor() {
       ) : null}
 
       <div className="editor-actions">
-        {!wizardOpen && error ? <p className="error">{error}</p> : null}
+        {error ? <p className="error">{error}</p> : null}
         {issues.length > 0 ? (
           <div className="info-banner">
             <i className="fa-solid fa-circle-info" />

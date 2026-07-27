@@ -49,7 +49,7 @@ function boilStep(steps: ProfileStep[]): ProfileStep | null {
   return timed.sort((a, b) => (b.temperature ?? 0) - (a.temperature ?? 0))[0] ?? null
 }
 
-export default function RecipeDetail() {
+export default function ProfileDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -58,7 +58,7 @@ export default function RecipeDetail() {
     queryFn: () => getProfile(id as string),
     enabled: Boolean(id),
   })
-  useTitle(data?.name ?? 'Рецепт')
+  useTitle(data?.name ?? 'Профиль')
 
   const location = useLocation()
   const [portalToken, setPortalToken] = useState('')
@@ -83,8 +83,8 @@ export default function RecipeDetail() {
       const newId = (done.result as { new_id?: string } | null)?.new_id
       if (newId && newId !== profileId) {
         // a new draft was replaced by the server's GUID — the local id is gone,
-        // so land on the real recipe (carry the success flag across the nav)
-        navigate(`/recipes/${newId}`, { replace: true, state: { uploaded: true } })
+        // so land on the real profile (carry the success flag across the nav)
+        navigate(`/profiles/${newId}`, { replace: true, state: { uploaded: true } })
         return
       }
       await queryClient.invalidateQueries({ queryKey: ['profile', profileId] })
@@ -97,13 +97,13 @@ export default function RecipeDetail() {
   }
 
   async function remove(profileId: string) {
-    if (!window.confirm('Удалить рецепт локально?')) return
+    if (!window.confirm('Удалить профиль локально?')) return
     setActionError(null)
     setBusy('delete')
     try {
       await deleteProfile(profileId)
       await queryClient.invalidateQueries({ queryKey: ['profiles'] })
-      navigate('/recipes')
+      navigate('/profiles')
     } catch (e) {
       setActionError(String(e))
       setBusy(null)
@@ -111,8 +111,8 @@ export default function RecipeDetail() {
   }
 
   const back = (
-    <a className="back" onClick={() => navigate('/recipes')}>
-      <i className="fa-solid fa-arrow-left" /> Рецепты
+    <a className="back" onClick={() => navigate('/profiles')}>
+      <i className="fa-solid fa-arrow-left" /> Профили
     </a>
   )
 
@@ -122,7 +122,7 @@ export default function RecipeDetail() {
     return (
       <div>
         {back}
-        <p>Рецепт не найден.</p>
+        <p>Профиль не найден.</p>
       </div>
     )
 
@@ -158,12 +158,12 @@ export default function RecipeDetail() {
         key={data.id}
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
-        subjectType="recipe"
+        subjectType="profile"
         subjectId={data.id}
       />
 
-      <div className="recipe-actions">
-        <button type="button" onClick={() => navigate(`/recipes/${data.id}/edit`)}>
+      <div className="profile-actions">
+        <button type="button" onClick={() => navigate(`/profiles/${data.id}/edit`)}>
           <i className="fa-solid fa-pen" /> Редактировать
         </button>
         <button
@@ -182,17 +182,20 @@ export default function RecipeDetail() {
           </button>
         ) : null}
       </div>
-      <label className="field recipe-token">
-        <span>Portal token (для выгрузки в RAPT)</span>
-        <textarea
-          className="sync-token"
-          rows={2}
-          value={portalToken}
-          onChange={(e) => setPortalToken(e.target.value)}
-          placeholder="Bearer eyJ..."
-        />
-      </label>
-      {uploaded ? <p className="success">Рецепт выгружен в RAPT ✓</p> : null}
+      {/* only drafts can be uploaded, so the token is dead weight elsewhere */}
+      {data.draft ? (
+        <label className="field profile-token">
+          <span>Portal token (для выгрузки в RAPT)</span>
+          <textarea
+            className="sync-token"
+            rows={2}
+            value={portalToken}
+            onChange={(e) => setPortalToken(e.target.value)}
+            placeholder="Bearer eyJ..."
+          />
+        </label>
+      ) : null}
+      {uploaded ? <p className="success">Профиль выгружен в RAPT ✓</p> : null}
       {actionError ? <p className="error">{actionError}</p> : null}
 
       <section className="stats stats-compact">
@@ -221,58 +224,60 @@ export default function RecipeDetail() {
       ) : null}
 
       {steps.length > 0 && (
-        <div className="table-wrap mobile-cards">
-          <table className="mobile-cards">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Шаг</th>
-                <th>Режим</th>
-                <th>Температура</th>
-                <th>Длит.</th>
-                <th>Нагрев</th>
-                <th>Алерты</th>
-              </tr>
-            </thead>
-            <tbody>
-              {steps.map((st) => (
-                <tr key={st.id ?? st.order}>
-                  <td data-label="#"> {st.order + 1}</td>
-                  <td data-label="Шаг">{st.name}</td>
-                  <td data-label="Режим">
-                    <StepIcon
-                      icon={st.controlType ? CONTROL_ICON[st.controlType] : undefined}
-                      title={st.controlType}
-                    />
-                    {st.controlType ?? '—'}
-                  </td>
-                  <td data-label="Температура">{temp(st.temperature)}</td>
-                  <td data-label="Длит.">
-                    <StepIcon
-                      icon={st.endType ? END_ICON[st.endType] : undefined}
-                      title={st.endType}
-                    />
-                    {stepDuration(st)}
-                  </td>
-                  <td data-label="Нагрев">
-                    {st.heatingUtilisation == null ? '—' : `${st.heatingUtilisation}%`}
-                  </td>
-                  <td data-label="Алерты">
-                    {st.alerts.length ? (
-                      <ul className="step-alerts">
-                        {st.alerts.map((a, i) => (
-                          <li key={a.id ?? i}>{a.alertText ?? a.trigger ?? '—'}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
+        <section className="panel">
+          <div className="table-wrap mobile-cards">
+            <table className="table-in-panel mobile-cards">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Шаг</th>
+                  <th>Режим</th>
+                  <th>Температура</th>
+                  <th>Длит.</th>
+                  <th>Нагрев</th>
+                  <th>Алерты</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {steps.map((st) => (
+                  <tr key={st.id ?? st.order}>
+                    <td data-label="#"> {st.order + 1}</td>
+                    <td data-label="Шаг">{st.name}</td>
+                    <td data-label="Режим">
+                      <StepIcon
+                        icon={st.controlType ? CONTROL_ICON[st.controlType] : undefined}
+                        title={st.controlType}
+                      />
+                      {st.controlType ?? '—'}
+                    </td>
+                    <td data-label="Температура">{temp(st.temperature)}</td>
+                    <td data-label="Длит.">
+                      <StepIcon
+                        icon={st.endType ? END_ICON[st.endType] : undefined}
+                        title={st.endType}
+                      />
+                      {stepDuration(st)}
+                    </td>
+                    <td data-label="Нагрев">
+                      {st.heatingUtilisation == null ? '—' : `${st.heatingUtilisation}%`}
+                    </td>
+                    <td data-label="Алерты">
+                      {st.alerts.length ? (
+                        <ul className="step-alerts">
+                          {st.alerts.map((a, i) => (
+                            <li key={a.id ?? i}>{a.alertText ?? a.trigger ?? '—'}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   )

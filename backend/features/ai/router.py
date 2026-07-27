@@ -23,7 +23,7 @@ router = APIRouter()
 
 
 class OpenConversationRequest(BaseModel):
-    subject_type: Literal["brew_session", "fermentation_session", "recipe"]
+    subject_type: Literal["brew_session", "fermentation_session", "profile"]
     subject_id: str = Field(min_length=1, max_length=128)
     locale: str = Field(
         default="ru",

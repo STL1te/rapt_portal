@@ -220,48 +220,54 @@ export default function BrewSessionPage() {
       {steps.length > 0 && (
         <>
           <h2>Профиль варки</h2>
-          <div className="table-wrap mobile-cards">
-            <table className="mobile-cards">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Шаг</th>
-                  <th>Температура</th>
-                  <th>Длит.</th>
-                  <th>Нагрев</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {steps.map((st) => {
-                  const isCurrent = currentStepOrder != null && st.order === currentStepOrder
-                  const isDone = currentStepOrder != null ? st.order < currentStepOrder : !s.active
-                  const statusLabel = isCurrent
-                    ? currentStepProgress == null
-                      ? 'идёт'
-                      : `${pct(currentStepProgress * 100)} шага`
-                    : isDone
-                      ? 'пройден'
-                      : 'в очереди'
+          <section className="panel">
+            <div className="table-wrap mobile-cards">
+              <table className="table-in-panel mobile-cards">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Шаг</th>
+                    <th>Температура</th>
+                    <th>Длит.</th>
+                    <th>Нагрев</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {steps.map((st) => {
+                    const isCurrent = currentStepOrder != null && st.order === currentStepOrder
+                    const isDone =
+                      currentStepOrder != null ? st.order < currentStepOrder : !s.active
+                    const statusLabel = isCurrent
+                      ? currentStepProgress == null
+                        ? 'идёт'
+                        : `${pct(currentStepProgress * 100)} шага`
+                      : isDone
+                        ? 'пройден'
+                        : 'в очереди'
 
-                  return (
-                    <tr key={st.id ?? st.order} className={isCurrent ? 'row selected' : undefined}>
-                      <td data-label="#"> {st.order + 1}</td>
-                      <td data-label="Шаг">{st.name}</td>
-                      <td data-label="Температура">{temp(st.temperature)}</td>
-                      <td data-label="Длит.">
-                        {st.endType === 'Manual' ? 'вручную' : stepLen(st.length)}
-                      </td>
-                      <td data-label="Нагрев">
-                        {st.heatingUtilisation == null ? '—' : `${st.heatingUtilisation}%`}
-                      </td>
-                      <td data-label="Статус">{statusLabel}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                    return (
+                      <tr
+                        key={st.id ?? st.order}
+                        className={isCurrent ? 'row selected' : undefined}
+                      >
+                        <td data-label="#"> {st.order + 1}</td>
+                        <td data-label="Шаг">{st.name}</td>
+                        <td data-label="Температура">{temp(st.temperature)}</td>
+                        <td data-label="Длит.">
+                          {st.endType === 'Manual' ? 'вручную' : stepLen(st.length)}
+                        </td>
+                        <td data-label="Нагрев">
+                          {st.heatingUtilisation == null ? '—' : `${st.heatingUtilisation}%`}
+                        </td>
+                        <td data-label="Статус">{statusLabel}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
       )}
     </div>

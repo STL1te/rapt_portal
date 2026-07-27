@@ -8,8 +8,8 @@
       "active": "How is fermentation going?",
       "done": "How did fermentation go?"
     },
-    "recipe": {
-      "default": "Is this recipe okay?"
+    "profile": {
+      "default": "Is this profile okay?"
     }
   },
   "ru": {
@@ -21,8 +21,8 @@
       "active": "Как идёт брожение?",
       "done": "Как прошло брожение?"
     },
-    "recipe": {
-      "default": "Проверь рецепт, всё ли с ним ок?"
+    "profile": {
+      "default": "Проверь профиль, всё ли с ним ок?"
     }
   }
 }

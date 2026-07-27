@@ -281,6 +281,8 @@ def install_llm(monkeypatch):
     def install(*plans):
         factory = _FakeOpenAIFactory(plans)
         monkeypatch.setattr("features.ai.services._new_llm_client", factory)
+        # pin sampling so the assertions below don't depend on the dev's .env
+        monkeypatch.setattr(ASSISTANT_LLM, "sampling", "default")
         return factory
 
     return install
@@ -354,7 +356,7 @@ def _seed_long_conversation(session_factory):
         session.add(
             AiConversation(
                 id="conv-summary",
-                subject_type="recipe",
+                subject_type="profile",
                 subject_id="recipe-1",
                 prompt_version="v1",
                 summary=None,
@@ -390,10 +392,10 @@ def _seed_long_conversation(session_factory):
 
 
 def test_localized_default_question_translates():
-    assert _localized_default_question("recipe", False, "ru-RU") == (
-        "Проверь рецепт, всё ли с ним ок?"
+    assert _localized_default_question("profile", False, "ru-RU") == (
+        "Проверь профиль, всё ли с ним ок?"
     )
-    assert _localized_default_question("recipe", False, "de-DE") == "Is this recipe okay?"
+    assert _localized_default_question("profile", False, "de-DE") == "Is this profile okay?"
 
 
 def test_sample_keeps_only_requested_fields():

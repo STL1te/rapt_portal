@@ -20,7 +20,7 @@ export const sendAiMessage = (conversationId: string, content: string, signal?: 
 export const resetAiConversation = (conversationId: string, locale: string, signal?: AbortSignal) =>
   post<AiConversation>(`/api/ai/conversations/${conversationId}/reset`, { locale }, { signal })
 
-export type RecipeGenerationStage =
+export type ProfileGenerationStage =
   | 'generating'
   | 'checking_structure'
   | 'checking_recipe'
@@ -28,14 +28,14 @@ export type RecipeGenerationStage =
   | 'checking_fixed_structure'
   | 'checking_fixed_recipe'
 
-type RecipeGenerationEvent =
-  | { type: 'progress'; stage: RecipeGenerationStage }
+type ProfileGenerationEvent =
+  | { type: 'progress'; stage: ProfileGenerationStage }
   | { type: 'result'; profile: ProfileInput }
   | { type: 'error'; message: string }
 
 export async function generateProfile(
   description: string,
-  onProgress: (stage: RecipeGenerationStage) => void,
+  onProgress: (stage: ProfileGenerationStage) => void,
   signal?: AbortSignal,
 ): Promise<ProfileInput> {
   const response = await fetch('/api/ai/recipe-wizard/stream', {
@@ -54,7 +54,7 @@ export async function generateProfile(
 
   const consume = (line: string) => {
     if (!line.trim()) return
-    const event = JSON.parse(line) as RecipeGenerationEvent
+    const event = JSON.parse(line) as ProfileGenerationEvent
     if (event.type === 'progress') onProgress(event.stage)
     if (event.type === 'result') profile = event.profile
     if (event.type === 'error') throw new Error(event.message)
