@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { openAiConversation, resetAiConversation, sendAiMessage } from '@/api'
@@ -16,6 +17,21 @@ type PendingUserMessage = {
   content: string
 }
 
+type WindowRect = { top: number; left: number; width: number; height: number }
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+const messageTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+function formatMessageTime(iso: string): string {
+  return messageTimeFormatter.format(new Date(iso))
+}
+
 export default function AiAssistant({ open, onClose, subjectType, subjectId }: Props) {
   const [conversation, setConversation] = useState<AiConversation | null>(null)
   const [visibleMessages, setVisibleMessages] = useState<AiMessage[]>([])
@@ -27,8 +43,28 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [windowRect, setWindowRect] = useState<WindowRect | null>(null)
   const messagesEnd = useRef<HTMLDivElement>(null)
   const swipeStartY = useRef<number | null>(null)
+  const windowElementRef = useRef<HTMLElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const dragState = useRef<{
+    startX: number
+    startY: number
+    startTop: number
+    startLeft: number
+    width: number
+    height: number
+  } | null>(null)
+  const resizeState = useRef<{
+    startX: number
+    startY: number
+    startTop: number
+    startLeft: number
+    startWidth: number
+    startHeight: number
+  } | null>(null)
 
   const subjectKey = `${subjectType}:${subjectId}`
   const loadedSubjectKey = useMemo(
@@ -72,7 +108,106 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
     messagesEnd.current?.scrollIntoView({ block: 'end' })
   }, [conversation, isLoading, isBootstrapping, pendingUserMessage])
 
+  useEffect(() => {
+    if (!isMenuOpen) return
+    function handleOutsideClick(event: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handleOutsideClick)
+    return () => document.removeEventListener('pointerdown', handleOutsideClick)
+  }, [isMenuOpen])
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handleDragMove)
+      window.removeEventListener('pointerup', handleDragEnd)
+      window.removeEventListener('pointermove', handleResizeMove)
+      window.removeEventListener('pointerup', handleResizeEnd)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (!open) return null
+
+  function currentRect(): WindowRect {
+    if (windowRect) return windowRect
+    const box = windowElementRef.current?.getBoundingClientRect()
+    return box
+      ? { top: box.top, left: box.left, width: box.width, height: box.height }
+      : { top: 0, left: 0, width: 420, height: 640 }
+  }
+
+  function handleHeaderPointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'touch') {
+      swipeStartY.current = event.clientY
+      return
+    }
+    if (isFullscreen || (event.target as HTMLElement).closest('button')) return
+    const rect = currentRect()
+    dragState.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startTop: rect.top,
+      startLeft: rect.left,
+      width: rect.width,
+      height: rect.height,
+    }
+    window.addEventListener('pointermove', handleDragMove)
+    window.addEventListener('pointerup', handleDragEnd)
+  }
+
+  function handleDragMove(event: PointerEvent) {
+    const drag = dragState.current
+    if (!drag) return
+    setWindowRect({
+      top: clamp(drag.startTop + (event.clientY - drag.startY), 8, window.innerHeight - 80),
+      left: clamp(drag.startLeft + (event.clientX - drag.startX), 8, window.innerWidth - 80),
+      width: drag.width,
+      height: drag.height,
+    })
+  }
+
+  function handleDragEnd() {
+    dragState.current = null
+    window.removeEventListener('pointermove', handleDragMove)
+    window.removeEventListener('pointerup', handleDragEnd)
+  }
+
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (isFullscreen) return
+    const rect = currentRect()
+    resizeState.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startTop: rect.top,
+      startLeft: rect.left,
+      startWidth: rect.width,
+      startHeight: rect.height,
+    }
+    window.addEventListener('pointermove', handleResizeMove)
+    window.addEventListener('pointerup', handleResizeEnd)
+  }
+
+  function handleResizeMove(event: PointerEvent) {
+    const start = resizeState.current
+    if (!start) return
+    const dx = event.clientX - start.startX
+    const dy = event.clientY - start.startY
+    const width = clamp(start.startWidth - dx, 320, window.innerWidth - 16)
+    const height = clamp(start.startHeight - dy, 360, window.innerHeight - 16)
+    setWindowRect({
+      top: start.startTop + (start.startHeight - height),
+      left: start.startLeft + (start.startWidth - width),
+      width,
+      height,
+    })
+  }
+
+  function handleResizeEnd() {
+    resizeState.current = null
+    window.removeEventListener('pointermove', handleResizeMove)
+    window.removeEventListener('pointerup', handleResizeEnd)
+  }
 
   async function handleSend(rawQuestion: string) {
     const trimmed = rawQuestion.trim()
@@ -137,31 +272,47 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
         aria-label="Закрыть чат"
         onClick={onClose}
       />
-      <section className={`ai-chat-window${isFullscreen ? ' fullscreen' : ''}`}>
+      <section
+        ref={windowElementRef}
+        className={`ai-chat-window${isFullscreen ? ' fullscreen' : ''}`}
+        style={
+          windowRect && !isFullscreen
+            ? {
+                top: windowRect.top,
+                left: windowRect.left,
+                width: windowRect.width,
+                height: windowRect.height,
+                right: 'auto',
+                bottom: 'auto',
+              }
+            : undefined
+        }
+      >
+        {!isFullscreen && (
+          <div
+            className="ai-chat-resize-handle"
+            onPointerDown={handleResizePointerDown}
+            aria-hidden="true"
+          />
+        )}
         <header
           className="ai-chat-head"
-          onPointerDown={(event) => {
-            if (event.pointerType === 'touch') swipeStartY.current = event.clientY
-          }}
+          onPointerDown={handleHeaderPointerDown}
           onPointerUp={(event) => {
             if (swipeStartY.current != null && event.clientY - swipeStartY.current > 100) onClose()
             swipeStartY.current = null
           }}
         >
-          <div>
-            <i className="fa-solid fa-wand-magic-sparkles" />
-            <span>AI-ассистент</span>
+          <div className="ai-chat-head-info">
+            <div className="ai-chat-head-avatar">
+              <i className="fa-solid fa-wand-magic-sparkles" />
+            </div>
+            <div className="ai-chat-head-text">
+              <span className="ai-chat-head-name">AI-ассистент</span>
+              <span className="ai-chat-head-caption">Помощник RAPT Portal</span>
+            </div>
           </div>
           <div className="ai-chat-head-actions">
-            <button
-              type="button"
-              onClick={() => setShowResetConfirm((value) => !value)}
-              disabled={!conversation || isLoading || isBootstrapping || isResetting}
-              aria-label="Начать новый чат"
-              title="Начать новый чат"
-            >
-              <i className="fa-solid fa-rotate-left" />
-            </button>
             <button
               type="button"
               onClick={() => setIsFullscreen((value) => !value)}
@@ -172,6 +323,43 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
                 className={`fa-solid ${isFullscreen ? 'fa-down-left-and-up-right-to-center' : 'fa-expand'}`}
               />
             </button>
+            <div className="ai-chat-menu" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen((value) => !value)}
+                aria-label="Меню"
+                aria-expanded={isMenuOpen}
+                title="Меню"
+              >
+                <i className="fa-solid fa-ellipsis-vertical" />
+              </button>
+              {isMenuOpen && (
+                <div className="ai-chat-menu-panel" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!conversation || isLoading || isBootstrapping || isResetting}
+                    onClick={() => {
+                      setIsMenuOpen(false)
+                      setShowResetConfirm(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-rotate-left" /> Очистить историю
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!windowRect}
+                    onClick={() => {
+                      setIsMenuOpen(false)
+                      setWindowRect(null)
+                    }}
+                  >
+                    <i className="fa-solid fa-window-restore" /> Сбросить положение и размер
+                  </button>
+                </div>
+              )}
+            </div>
             <button type="button" onClick={onClose} aria-label="Закрыть чат" title="Закрыть чат">
               <i className="fa-solid fa-xmark" />
             </button>
@@ -198,18 +386,36 @@ export default function AiAssistant({ open, onClose, subjectType, subjectId }: P
               <span /> <span /> <span /> AI-ассистент думает…
             </div>
           ) : null}
-          {shownMessages.map((message, index) => (
-            <article
-              key={'id' in message ? message.id : `pending-${index}`}
-              className={`ai-bubble ${message.role}`}
-            >
-              {message.role === 'assistant' ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-              ) : (
-                message.content
-              )}
-            </article>
-          ))}
+          {shownMessages.map((message, index) => {
+            const isAssistant = message.role === 'assistant'
+            const createdAt = 'created_at' in message ? message.created_at : null
+            return (
+              <div
+                key={'id' in message ? message.id : `pending-${index}`}
+                className={`ai-message-row ${message.role}`}
+              >
+                {isAssistant && (
+                  <div className="ai-message-avatar" aria-hidden="true">
+                    <i className="fa-solid fa-wand-magic-sparkles" />
+                  </div>
+                )}
+                <div className="ai-message-body">
+                  <article className={`ai-bubble ${message.role}`}>
+                    {isAssistant ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                    ) : (
+                      message.content
+                    )}
+                  </article>
+                  {createdAt && (
+                    <time className="ai-message-time" dateTime={createdAt}>
+                      {formatMessageTime(createdAt)}
+                    </time>
+                  )}
+                </div>
+              </div>
+            )
+          })}
           {isLoading && (
             <div className="ai-chat-loading">
               <span /> <span /> <span /> AI-ассистент думает…
