@@ -14,14 +14,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from core.config import (
-    LLM_API_KEY,
-    LLM_BASE_URL,
+    ASSISTANT_LLM,
     LLM_CHAT_TEMPERATURE,
-    LLM_MODEL,
-    LLM_SAMPLING,
     LLM_TEMPERATURE,
-    LLM_TIMEOUT_SECONDS,
     LLM_TOP_P,
+    LLMConfig,
 )
 from core.db import (
     AiConversation,
@@ -172,7 +169,7 @@ def _conversation_dict(conversation: AiConversation, messages: Sequence[AiMessag
         "id": conversation.id,
         "subject_type": conversation.subject_type,
         "subject_id": conversation.subject_id,
-        "model": LLM_MODEL,
+        "model": ASSISTANT_LLM.model,
         "messages": [_message_dict(message) for message in messages],
     }
 
@@ -464,12 +461,12 @@ def _run_tool(current_session_id: str | None, name: str, arguments: dict) -> dic
     return {"error": "unknown tool"}
 
 
-def _new_llm_client() -> AsyncOpenAI:
+def _new_llm_client(llm: LLMConfig) -> AsyncOpenAI:
     """Single construction seam for the LLM client so tests can swap it in one place."""
     return AsyncOpenAI(
-        base_url=LLM_BASE_URL,
-        api_key=LLM_API_KEY,
-        timeout=LLM_TIMEOUT_SECONDS,
+        base_url=llm.base_url,
+        api_key=llm.api_key,
+        timeout=llm.timeout,
         max_retries=_LLM_MAX_RETRIES,
     )
 
@@ -480,26 +477,27 @@ async def _run_chat_completion(
     tools: list[dict] | None,
     current_session_id: str | None,
     temperature: float,
+    llm: LLMConfig = ASSISTANT_LLM,
     response_format: dict | None = None,
     max_tokens: int | None = None,
     model: str | None = None,
 ) -> str:
     request: dict = {
-        "model": model or LLM_MODEL,
+        "model": model or llm.model,
         "messages": messages,
     }
-    if LLM_SAMPLING != "none":
+    if llm.sampling != "none":
         request["temperature"] = temperature
         request["top_p"] = LLM_TOP_P
     if response_format is not None:
         request["response_format"] = response_format
     if max_tokens is not None:
-        request["max_completion_tokens" if LLM_SAMPLING == "none" else "max_tokens"] = max_tokens
+        request["max_completion_tokens" if llm.sampling == "none" else "max_tokens"] = max_tokens
     if tools:
         request["tools"] = tools
         request["tool_choice"] = "auto"
 
-    async with _new_llm_client() as client:
+    async with _new_llm_client(llm) as client:
         working_messages = list(messages)
         for _ in range(_MAX_TOOL_ROUNDS):
             response = await client.chat.completions.create(**request)
@@ -733,7 +731,7 @@ async def send_conversation_message(conversation_id: str, content: str) -> dict:
         return {
             "user_message": _message_dict(user_message),
             "assistant_message": _message_dict(assistant_message),
-            "model": LLM_MODEL,
+            "model": ASSISTANT_LLM.model,
         }
 
 

@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.config import LLM_CHAT_TEMPERATURE, LLM_TEMPERATURE
+from core.config import ASSISTANT_LLM, LLM_CHAT_TEMPERATURE, LLM_TEMPERATURE
 from core.db import (
     AiConversation,
     AiMessage,
@@ -31,6 +31,7 @@ from features.ai.beerjson_schema import assert_valid_beerjson
 from features.ai.brewzilla_overrides import BrewZillaOverrides
 from features.ai.recipe_wizard import (
     RECIPE_WIZARD_VALIDATOR_PROMPT,
+    WIZARD_LLM,
     SubmitRecipe,
     _parse_semantic_validation,
     _response_format_fallbacks,
@@ -96,7 +97,7 @@ class _FakeOpenAIFactory:
         self._plans = [list(plan) for plan in plans]
         self.requests = []
 
-    def __call__(self, **_kwargs):
+    def __call__(self, *_args, **_kwargs):
         return _FakeOpenAIClient(self, self._plans.pop(0))
 
 
@@ -301,9 +302,10 @@ def test_llm_client_retries_transient_failures(monkeypatch):
 
     monkeypatch.setattr("features.ai.services.AsyncOpenAI", create_client)
 
-    _new_llm_client()
+    _new_llm_client(ASSISTANT_LLM)
 
     assert captured["max_retries"] == 2
+    assert captured["base_url"] == ASSISTANT_LLM.base_url
 
 
 def test_semantic_validator_accepts_fenced_json():
@@ -311,7 +313,7 @@ def test_semantic_validator_accepts_fenced_json():
 
 
 def test_semantic_validator_honors_configured_response_format(monkeypatch):
-    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "json_object")
+    monkeypatch.setattr(WIZARD_LLM, "response_format", "json_object")
 
     schema_format = {"type": "json_schema", "json_schema": {"name": "x"}}
     assert _response_format_fallbacks(schema_format) == (("JSON mode", {"type": "json_object"}),)
@@ -319,7 +321,7 @@ def test_semantic_validator_honors_configured_response_format(monkeypatch):
 
 async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, caplog):
     requests: list[dict] = []
-    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "auto")
+    monkeypatch.setattr(WIZARD_LLM, "response_format", "auto")
 
     async def complete(_messages, **kwargs):
         requests.append(kwargs)
@@ -603,7 +605,7 @@ async def test_summary_failure_falls_back_to_recent(db, install_llm, monkeypatch
 
 
 async def test_generate_profile_happy_path(install_llm, monkeypatch):
-    monkeypatch.setattr("features.ai.recipe_wizard.LLM_RESPONSE_FORMAT", "auto")
+    monkeypatch.setattr(WIZARD_LLM, "response_format", "auto")
     factory = install_llm(
         [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
@@ -687,7 +689,7 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
 
 
 async def test_semantic_validator_uses_dedicated_judge_model(install_llm, monkeypatch):
-    monkeypatch.setattr("features.ai.recipe_wizard.LLM_VALIDATOR_MODEL", "judge-model")
+    monkeypatch.setattr(WIZARD_LLM, "validator_model", "judge-model")
     factory = install_llm(
         [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],

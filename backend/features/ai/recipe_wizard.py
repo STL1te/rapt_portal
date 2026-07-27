@@ -7,7 +7,7 @@ from collections.abc import Callable
 from openai import BadRequestError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from core.config import LLM_BASE_URL, LLM_MODEL, LLM_RESPONSE_FORMAT, LLM_VALIDATOR_MODEL
+from core.config import WIZARD_LLM
 
 from .beerjson_models import RecipeModel, to_beerjson_document
 from .brewzilla_compiler import compile_brewzilla_profile
@@ -94,11 +94,11 @@ def _response_format_fallbacks(schema_format: dict) -> tuple[tuple[str, dict], .
         "json_schema": ("JSON Schema", schema_format),
         "json_object": ("JSON mode", _JSON_OBJECT_RESPONSE_FORMAT),
     }
-    if LLM_RESPONSE_FORMAT == "auto":
+    if WIZARD_LLM.response_format == "auto":
         return formats["json_schema"], formats["json_object"]
-    if LLM_RESPONSE_FORMAT == "none":
+    if WIZARD_LLM.response_format == "none":
         return ()
-    return (formats[LLM_RESPONSE_FORMAT],)
+    return (formats[WIZARD_LLM.response_format],)
 
 
 def _strip_code_fences(raw: str) -> str:
@@ -118,6 +118,7 @@ async def _run_json_completion(
     model: str | None = None,
 ) -> str:
     request = {
+        "llm": WIZARD_LLM,
         "tools": None,
         "current_session_id": None,
         "temperature": 0,
@@ -136,23 +137,25 @@ async def _run_json_completion(
             if "response_format" not in str(error).lower():
                 raise
             logger.error(error)
-            fallback_available = index < len(response_formats) - 1 or LLM_RESPONSE_FORMAT == "auto"
+            fallback_available = (
+                index < len(response_formats) - 1 or WIZARD_LLM.response_format == "auto"
+            )
             logger.warning(
                 "LLM response format is incompatible: model=%s base_url=%s format=%s status=%s; %s",
-                LLM_MODEL,
-                LLM_BASE_URL,
+                WIZARD_LLM.model,
+                WIZARD_LLM.base_url,
                 name,
                 error.status_code,
                 "trying the next format" if fallback_available else "no fallback is configured",
             )
             if not fallback_available:
                 raise
-    if LLM_RESPONSE_FORMAT == "auto":
+    if WIZARD_LLM.response_format == "auto":
         logger.warning(
             "LLM supports neither JSON Schema nor JSON mode: model=%s base_url=%s; "
             "retrying without response_format",
-            LLM_MODEL,
-            LLM_BASE_URL,
+            WIZARD_LLM.model,
+            WIZARD_LLM.base_url,
         )
     return await _run_chat_completion(messages, **request)
 
@@ -227,7 +230,7 @@ async def _run_semantic_validator(description: str, submit: SubmitRecipe) -> str
         messages,
         _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
         max_tokens=_MAX_COMPLETION_TOKENS,
-        model=LLM_VALIDATOR_MODEL,
+        model=WIZARD_LLM.validator_model,
     )
 
 
