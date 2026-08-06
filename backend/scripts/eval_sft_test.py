@@ -29,7 +29,12 @@ from openai import AsyncOpenAI
 from pydantic import ValidationError
 
 from features.ai.brewzilla_compiler import compile_brewzilla_profile
-from features.ai.recipe_wizard import _RECIPE_RESPONSE_FORMAT, SubmitRecipe, _strip_code_fences
+from features.ai.recipe_wizard import (
+    _RECIPE_RESPONSE_FORMAT,
+    SubmitRecipe,
+    _strip_code_fences,
+    _strip_empty_strings,
+)
 
 
 def _relaxed_schema(schema):
@@ -55,21 +60,6 @@ _RELAXED_RESPONSE_FORMAT = {
         "schema": _relaxed_schema(SubmitRecipe.model_json_schema(by_alias=True)),
     },
 }
-
-
-def _strip_empty_strings(node):
-    """Drop empty-string values: strict grammar forces every key, so the student
-    emits "" where the teacher omitted the field (minLength never reaches the
-    grammar). Removal restores the omit-style spec pydantic expects."""
-    if isinstance(node, dict):
-        return {
-            key: _strip_empty_strings(value)
-            for key, value in node.items()
-            if value != ""
-        }
-    if isinstance(node, list):
-        return [_strip_empty_strings(value) for value in node]
-    return node
 
 
 def _leaves(node, path=""):

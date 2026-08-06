@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
 RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
-_MAX_COMPLETION_TOKENS = 16_384
+# Ceiling, not an allocation. 16k truncated long recipes on reasoning teachers:
+# thinking tokens share this budget with the pretty-printed JSON answer.
+_MAX_COMPLETION_TOKENS = 32_768
 _VALIDATOR_PREVIEW_CHARS = 300
 _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT = {
     "type": "json_schema",
@@ -170,6 +172,20 @@ def _recipe_wizard_messages(description: str, correction: str | None = None) -> 
     return messages
 
 
+def _strip_empty_strings(node):
+    """Drop the placeholders a constrained decoder emits for "nothing to say here":
+    "" for a forced optional key (minLength never reaches the grammar) and a null list
+    element for an empty list. Removing them restores the object pydantic expects.
+    A null *value* is kept - for a nullable field it is the honest answer."""
+    if isinstance(node, dict):
+        return {
+            key: _strip_empty_strings(value) for key, value in node.items() if value != ""
+        }
+    if isinstance(node, list):
+        return [_strip_empty_strings(value) for value in node if value is not None]
+    return node
+
+
 async def _extract_recipe(messages: list[dict]) -> SubmitRecipe:
     raw = await _run_json_completion(
         messages, _RECIPE_RESPONSE_FORMAT, max_tokens=_MAX_COMPLETION_TOKENS
@@ -180,7 +196,7 @@ async def _extract_recipe(messages: list[dict]) -> SubmitRecipe:
         raise ValueError(
             f"submit_recipe must be a single valid JSON object: preview={_preview(raw)!r}"
         ) from error
-    return SubmitRecipe.model_validate(arguments)
+    return SubmitRecipe.model_validate(_strip_empty_strings(arguments))
 
 
 def _parse_semantic_validation(raw: str) -> list[str]:

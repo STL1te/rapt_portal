@@ -36,6 +36,7 @@ from features.ai.recipe_wizard import (
     _parse_semantic_validation,
     _response_format_fallbacks,
     _run_semantic_validator,
+    _strip_empty_strings,
     generate_profile,
 )
 from features.ai.router import RecipeWizardRequest, recipe_wizard_stream_endpoint
@@ -293,6 +294,27 @@ def _raise(exc: Exception):
         raise exc
 
     return _boom
+
+
+def test_strip_empty_strings_drops_grammar_placeholders():
+    """A constrained decoder must emit every key and cannot emit an empty list, so it
+    fills the gaps with "" and [null]. Real nulls and zeros must survive."""
+    assert _strip_empty_strings(
+        {
+            "name": "Pilsner",
+            "origin": "",
+            "producer": None,
+            "boil_steps": [None],
+            "hops": [{"name": "Magnum", "origin": ""}],
+            "amount": {"unit": "g", "value": 0},
+        }
+    ) == {
+        "name": "Pilsner",
+        "producer": None,
+        "boil_steps": [],
+        "hops": [{"name": "Magnum"}],
+        "amount": {"unit": "g", "value": 0},
+    }
 
 
 def test_llm_client_retries_transient_failures(monkeypatch):
@@ -608,6 +630,8 @@ async def test_summary_failure_falls_back_to_recent(db, install_llm, monkeypatch
 
 async def test_generate_profile_happy_path(install_llm, monkeypatch):
     monkeypatch.setattr(WIZARD_LLM, "response_format", "auto")
+    # Pinned, not read from .env: this asserts the request the sampling modes produce.
+    monkeypatch.setattr(WIZARD_LLM, "sampling", "default")
     factory = install_llm(
         [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
@@ -642,7 +666,7 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     request = factory.requests[0]
     assert request["temperature"] == 0
     assert "tools" not in request
-    assert request["max_tokens"] == 16_384
+    assert request["max_tokens"] == 32_768
     response_format = request["response_format"]
     assert response_format["type"] == "json_schema"
     assert response_format["json_schema"]["name"] == "submit_recipe"
@@ -674,7 +698,7 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     assert "exporter step ordering" in validator_system
     semantic_request = factory.requests[1]
     assert semantic_request["response_format"]["type"] == "json_schema"
-    assert semantic_request["max_tokens"] == 16_384
+    assert semantic_request["max_tokens"] == 32_768
     semantic_content = semantic_request["messages"][1]["content"]
     assert "<source_description>" in semantic_content
     assert "<candidate_spec>" in semantic_content
@@ -717,7 +741,11 @@ async def test_generate_profile_applies_user_overrides_over_extracted(install_ll
     assert profile["steps"][0]["temperature"] == 66
 
 
-async def test_generate_profile_retries_broken_semantic_validator_without_repair(install_llm):
+async def test_generate_profile_retries_broken_semantic_validator_without_repair(
+    install_llm, monkeypatch
+):
+    # Pinned, not read from .env: sampling picks the max_tokens key name.
+    monkeypatch.setattr(WIZARD_LLM, "sampling", "default")
     factory = install_llm(
         [_recipe_message()],
         [_message("not json " * 1000)],
@@ -729,8 +757,8 @@ async def test_generate_profile_retries_broken_semantic_validator_without_repair
     assert profile["steps"][-1]["name"] == "Cooling"
     assert stages == ["generating", "checking_structure", "checking_recipe"]
     assert len(factory.requests) == 3
-    assert factory.requests[1]["max_tokens"] == 16_384
-    assert factory.requests[2]["max_tokens"] == 16_384
+    assert factory.requests[1]["max_tokens"] == 32_768
+    assert factory.requests[2]["max_tokens"] == 32_768
 
 
 async def test_generate_profile_logs_broken_semantic_validator_reason(install_llm, caplog):
@@ -863,8 +891,11 @@ async def test_generate_profile_rejects_unknown_tool_fields(install_llm):
         await generate_profile("Собери профиль с лишним полем")
 
 
-async def test_generate_profile_repairs_missing_alert_text(install_llm):
-    invalid_submit = {
+async def test_generate_profile_absorbs_empty_alert_text_without_a_repair(install_llm):
+    """A constrained decoder must emit every key, so "" is how a model says "nothing
+    here". That costs no repair round-trip: the key is dropped and the compiler's own
+    default fills in."""
+    empty_alert_submit = {
         **_VALID_SUBMIT_RECIPE,
         "brewzilla_overrides": {
             **_VALID_SUBMIT_RECIPE["brewzilla_overrides"],
@@ -872,15 +903,13 @@ async def test_generate_profile_repairs_missing_alert_text(install_llm):
         },
     }
     factory = install_llm(
-        [_recipe_message(invalid_submit)],
-        [_recipe_message()],
+        [_recipe_message(empty_alert_submit)],
         [_message(_VALID_SEMANTIC_VALIDATION)],
     )
     profile, _recipe = await generate_profile("Рецепт с хмелем и охлаждением после кипа.")
 
     assert profile["steps"][4]["alerts"][0]["alertText"]
-    retry_message = factory.requests[1]["messages"][-1]["content"]
-    assert "String should have at least 1 character" in retry_message
+    assert len(factory.requests) == 2  # extraction + semantic validation, no repair
 
 
 def test_recipe_wizard_accepts_detailed_human_recipe():

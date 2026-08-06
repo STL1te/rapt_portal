@@ -82,11 +82,19 @@ order is rejected):
   "other" as stated; default to "all grain" for grain recipes.
 - Put every listed ingredient in its typed list: `fermentable_additions` (grains,
   extracts, sugars, fruit, honey), `hop_additions`, `culture_additions` (yeast and
-  bacteria), `miscellaneous_additions` (spices, finings, water agents, zest, and other
-  additions). Preserve stated color, yield/extract, alpha acid, hop form, and yeast
+  bacteria), `miscellaneous_additions`. A miscellaneous `type` is EXACTLY one of
+  "spice", "fining", "water agent", "herb", "flavor", "wood", "other" - singular, never
+  "finings". Preserve stated color, yield/extract, alpha acid, hop form, and yeast
   type/form. The yeast is often named only in the process text ("Ferment with X",
   "Брожение: X") and not in the ingredient list — always include it as a culture
   addition anyway.
+- Country and maker belong in `origin` and `producer`, not in `name`: "Магнум
+  (Германия)" is `{"name": "Магнум", "origin": "Германия"}`, "Pilsner (Weyermann)" is
+  `{"name": "Pilsner", "producer": "Weyermann"}`. Never leave a parenthesized country
+  or maltster inside the name, and never glue the maker onto it ("Fermentis - Safale
+  S-04" is `{"name": "Safale S-04", "producer": "Fermentis"}`). Fermentables listed for
+  the mash get `timing = {"use": "add_to_mash"}` and yeast gets
+  `timing = {"use": "add_to_fermentation"}` even when no time is stated.
 - Timing semantics: `timing.duration` is contact time - "boil the hops for 40 minutes"
   means `{"use": "add_to_boil", "duration": {"unit": "min", "value": 40}}`. A stated
   boil time for an ingredient is ALWAYS `duration`, never `time`. `timing.time` is the
