@@ -22,11 +22,13 @@ set WIZARD_LLM_RESPONSE_FORMAT=json_schema
 set WIZARD_LLM_SAMPLING=default
 
 set PYTHONPATH=.
+rem Output lives under the teacher that produced it - the corpus is a mix otherwise and
+rem there is no way to tell later which rows came from which model.
 set CORPUS=D:\Work\projects\beer_knowledge\data\raw\recipes_detail.jsonl
-set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v3\distill.jsonl
+set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\qwen3.7-flash\ru.jsonl
 rem EN corpus (use the same --shuffle seed as the previous EN run to keep subsets nested):
 rem set CORPUS=D:\Work\projects\beer_knowledge\data\raw\beersfriend_detail.jsonl
-rem set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v3\distill_en.jsonl
+rem set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\qwen3.7-flash\en.jsonl
 
 set ARGS=%*
 if "%~1"=="" set ARGS=--count 36 --concurrency 3
