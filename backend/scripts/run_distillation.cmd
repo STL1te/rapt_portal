@@ -23,10 +23,10 @@ set WIZARD_LLM_SAMPLING=default
 
 set PYTHONPATH=.
 set CORPUS=D:\Work\projects\beer_knowledge\data\raw\recipes_detail.jsonl
-set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v2\distill.jsonl
+set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v3\distill.jsonl
 rem EN corpus (use the same --shuffle seed as the previous EN run to keep subsets nested):
 rem set CORPUS=D:\Work\projects\beer_knowledge\data\raw\beersfriend_detail.jsonl
-rem set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v2\distill_en.jsonl
+rem set OUTPUT=D:\Work\projects\beer_knowledge\data\distil\v3\distill_en.jsonl
 
 set ARGS=%*
 if "%~1"=="" set ARGS=--count 36 --concurrency 3
