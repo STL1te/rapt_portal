@@ -17,6 +17,9 @@ from .services import _load_prompt, _run_chat_completion
 logger = logging.getLogger(__name__)
 
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
+# The fine-tuned student was trained with this one-liner as its system turn, so it must
+# stay byte-identical to the `--system` file that built the SFT set (sft v5/v6).
+RECIPE_WIZARD_SHORT_SYSTEM_PROMPT = _load_prompt("recipe_wizard_short.md")
 RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
 # Ceiling, not an allocation. 16k truncated long recipes on reasoning teachers:
@@ -162,9 +165,17 @@ async def _run_json_completion(
     return await _run_chat_completion(messages, **request)
 
 
+def _system_prompt() -> str:
+    """Full instructions for a model seeing the task for the first time (cloud teacher),
+    the trained-in one-liner for the fine-tuned student."""
+    if WIZARD_LLM.prompt == "short":
+        return RECIPE_WIZARD_SHORT_SYSTEM_PROMPT.strip()
+    return RECIPE_WIZARD_SYSTEM_PROMPT.strip()
+
+
 def _recipe_wizard_messages(description: str, correction: str | None = None) -> list[dict]:
     messages = [
-        {"role": "system", "content": RECIPE_WIZARD_SYSTEM_PROMPT.strip()},
+        {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": description.strip()},
     ]
     if correction:

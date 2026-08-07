@@ -30,10 +30,13 @@ from core.db import (
 from features.ai.beerjson_schema import assert_valid_beerjson
 from features.ai.brewzilla_overrides import BrewZillaOverrides
 from features.ai.recipe_wizard import (
+    RECIPE_WIZARD_SHORT_SYSTEM_PROMPT,
+    RECIPE_WIZARD_SYSTEM_PROMPT,
     RECIPE_WIZARD_VALIDATOR_PROMPT,
     WIZARD_LLM,
     SubmitRecipe,
     _parse_semantic_validation,
+    _recipe_wizard_messages,
     _response_format_fallbacks,
     _run_semantic_validator,
     _strip_empty_strings,
@@ -334,6 +337,25 @@ def test_llm_client_retries_transient_failures(monkeypatch):
 
 def test_semantic_validator_accepts_fenced_json():
     assert _parse_semantic_validation('```json\n{"valid":true,"errors":[]}\n```') == []
+
+
+def test_wizard_prompt_switches_with_the_configured_model(monkeypatch):
+    monkeypatch.setattr(WIZARD_LLM, "prompt", "short")
+    assert _recipe_wizard_messages("60 min boil")[0]["content"] == (
+        RECIPE_WIZARD_SHORT_SYSTEM_PROMPT.strip()
+    )
+    monkeypatch.setattr(WIZARD_LLM, "prompt", "full")
+    assert _recipe_wizard_messages("60 min boil")[0]["content"] == (
+        RECIPE_WIZARD_SYSTEM_PROMPT.strip()
+    )
+
+
+def test_short_prompt_matches_the_string_the_student_was_trained_on():
+    """Byte-identical to the --system file behind sft v5/v6. A stray edit here would
+    put the student off-distribution at inference with nothing failing loudly."""
+    assert RECIPE_WIZARD_SHORT_SYSTEM_PROMPT.strip() == (
+        "Extract the brewing recipe into the submit_recipe JSON object."
+    )
 
 
 def test_semantic_validator_honors_configured_response_format(monkeypatch):
