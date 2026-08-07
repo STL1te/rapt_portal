@@ -27,9 +27,15 @@ sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH
 
 from pydantic import ValidationError
 
+from core.config import _llm
 from evaluate_recipe_wizard import _READY, _load_results, _meta, _source
 from features.ai.recipe_wizard import SubmitRecipe, _semantic_recipe_errors
 from features.ai.services import _run_chat_completion
+
+# Rewriter endpoint: REWRITER_LLM_* env vars, falling back to the shared LLM_* block
+# in backend/.env (so the key stays out of run_freeform.cmd). The semantic judge is
+# separate — it runs on WIZARD_LLM inside recipe_wizard.
+_REWRITER_LLM = _llm("REWRITER")
 
 _STYLES = (
     "CAPS section headers (МАЛТ/СОЛОД, ХМЕЛЬ, ДРОЖЖИ or the source-language equivalents), "
@@ -48,10 +54,19 @@ _STYLES = (
 # Partial drafts: real users often paste only a fragment (just the mash rests, just
 # the grain bill). Each cut names the sections to keep and a spec filter; the cut
 # spec becomes the training target so the model learns to omit what wasn't given.
+# The wording must match _cut_spec exactly: a fact the draft keeps but the cut spec
+# drops teaches the model to discard stated ingredients, and a fact the cut keeps but
+# the draft never mentions teaches it to invent them. Both directions are rejected by
+# the semantic gate, so an imprecise section name here just burns rewrites.
 _PARTIAL_CUTS = (
-    ("the mash rests (temperatures/durations) and the boil time", ("mash", "boil")),
-    ("the recipe name and the ingredient lists (malts, hops, yeast)", ("name", "ingredients")),
-    ("the mash rests, the boil time and the hop additions with timings", ("mash", "boil", "hops")),
+    ("the mash rests (temperatures/durations) and the boil time, with no ingredients "
+     "at all — no grain bill, no hops, no additions", ("mash", "boil")),
+    ("the recipe name and the ingredients — every ingredient in the recipe, including "
+     "priming sugar and anything added during fermentation or at packaging, but no "
+     "process details", ("name", "ingredients")),
+    ("the mash rests, the boil time and the hop additions with their timings — hops "
+     "only, no grain bill and no non-hop additions (no finings, spices or flavourings)",
+     ("mash", "boil", "hops")),
 )
 
 
@@ -136,6 +151,7 @@ async def _rewrite_one(
         tools=None,
         current_session_id=None,
         temperature=0.7,
+        llm=_REWRITER_LLM,
         max_tokens=8_192,
     )
     rewrite = rewrite.strip()

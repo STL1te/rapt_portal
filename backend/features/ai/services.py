@@ -496,6 +496,8 @@ async def _run_chat_completion(
     if tools:
         request["tools"] = tools
         request["tool_choice"] = "auto"
+    if llm.extra_body:
+        request["extra_body"] = llm.extra_body
 
     async with _new_llm_client(llm) as client:
         working_messages = list(messages)

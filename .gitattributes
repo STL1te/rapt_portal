@@ -1,5 +1,9 @@
 * text=auto eol=lf
 
+# cmd.exe mis-parses multi-line `if (...)` blocks in LF-only files and silently
+# falls through, so batch scripts must keep CRLF in the working tree.
+*.cmd text eol=crlf
+
 *.png binary
 *.jpg binary
 *.jpeg binary

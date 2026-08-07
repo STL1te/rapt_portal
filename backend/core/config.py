@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass
 
@@ -35,6 +36,9 @@ class LLMConfig:
     sampling: str
     # Optional stronger judge for recipe-wizard semantic validation; empty = model.
     validator_model: str | None
+    # JSON dict of provider-specific request params (e.g. {"enable_thinking": false}
+    # for Qwen on DashScope); sent as extra_body, empty = nothing extra.
+    extra_body: dict
 
 
 def _llm(prefix: str) -> LLMConfig:
@@ -59,6 +63,7 @@ def _llm(prefix: str) -> LLMConfig:
         response_format=response_format,
         sampling=sampling,
         validator_model=get("VALIDATOR_MODEL") or None,
+        extra_body=json.loads(get("EXTRA_BODY") or "{}"),
     )
 
 
