@@ -20,10 +20,6 @@ set WIZARD_LLM_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 set WIZARD_LLM_MODEL=qwen3.7-flash
 set WIZARD_LLM_RESPONSE_FORMAT=json_schema
 set WIZARD_LLM_SAMPLING=default
-rem Pinned: the teacher has never seen the task and needs the whole instruction prompt.
-rem Without this, a WIZARD_LLM_PROMPT=short meant for the student leaks in from .env
-rem and the teacher writes targets from a one-line brief.
-set WIZARD_LLM_PROMPT=full
 
 set PYTHONPATH=.
 rem Output lives under the teacher that produced it - the corpus is a mix otherwise and

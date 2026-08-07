@@ -16,9 +16,6 @@ set WIZARD_LLM_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 set WIZARD_LLM_MODEL=qwen3.7-flash
 set WIZARD_LLM_RESPONSE_FORMAT=json_schema
 set WIZARD_LLM_SAMPLING=default
-rem Pinned for the same reason as run_distillation.cmd: the judge is a cloud model and
-rem must not inherit the student's short prompt from .env.
-set WIZARD_LLM_PROMPT=full
 
 rem Rewriter: stronger model; thinking off - it shares the completion budget and
 rem truncates long recipes.

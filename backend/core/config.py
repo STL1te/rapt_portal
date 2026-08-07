@@ -36,11 +36,6 @@ class LLMConfig:
     sampling: str
     # Optional stronger judge for recipe-wizard semantic validation; empty = model.
     validator_model: str | None
-    # full = the whole instruction prompt, for a model that has never seen the task.
-    # short = the one-line prompt the student was fine-tuned on (sft v5/v6): the rules
-    # live in the weights, so resending them wastes ~8.6k chars and is off-distribution.
-    # Must match the model actually configured - a v3 student needs `full`.
-    prompt: str
     # JSON dict of provider-specific request params (e.g. {"enable_thinking": false}
     # for Qwen on DashScope); sent as extra_body, empty = nothing extra.
     extra_body: dict
@@ -60,9 +55,6 @@ def _llm(prefix: str) -> LLMConfig:
     sampling = get("SAMPLING", "default").lower()
     if sampling not in {"default", "none"}:
         raise ValueError(f"{prefix}_LLM_SAMPLING must be one of: default, none")
-    prompt = get("PROMPT", "full").lower()
-    if prompt not in {"full", "short"}:
-        raise ValueError(f"{prefix}_LLM_PROMPT must be one of: full, short")
     return LLMConfig(
         base_url=get("BASE_URL", "http://host.docker.internal:11434/v1"),
         api_key=get("API_KEY", "not-needed"),
@@ -72,7 +64,6 @@ def _llm(prefix: str) -> LLMConfig:
         sampling=sampling,
         validator_model=get("VALIDATOR_MODEL") or None,
         extra_body=json.loads(get("EXTRA_BODY") or "{}"),
-        prompt=prompt,
     )
 
 
