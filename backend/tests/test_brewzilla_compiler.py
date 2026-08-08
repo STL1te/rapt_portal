@@ -223,6 +223,58 @@ def test_preserves_whirlpool_without_temperature():
     assert whirlpool["alerts"][0]["length"] == 0
 
 
+def test_compiles_untimed_whirlpool_from_stand_temperature():
+    """A whirlpool stated as a temperature with no stand time ("во время охлаждения при
+    95 градусах") is a manual-advance step carrying its hops as StepStart alerts."""
+    recipe = _base_recipe(boil_minutes=90, hop=_hop(name="Цитра", g=28.0, time_min=90))
+    recipe = recipe.model_copy(
+        update={
+            "boil": BoilProcedureType(
+                boil_time=TimeType(unit="min", value=90),
+                boil_steps=[
+                    BoilStepType(),
+                    BoilStepType(
+                        name="Хмелестояние",
+                        start_temperature=TemperatureType(unit="C", value=95),
+                    ),
+                ],
+            )
+        }
+    )
+
+    profile = compile_brewzilla_profile(recipe)
+
+    assert _step(profile, "Boil")["temperature"] == 100
+    assert not _step(profile, "Boil")["alerts"]
+    whirlpool = _step(profile, "Хмелестояние")
+    assert whirlpool["temperature"] == 95
+    assert whirlpool["endType"] == "Manual"
+    assert whirlpool["durationType"] == "Manual"
+    assert whirlpool["length"] is None
+    assert whirlpool["heatingUtilisation"] == 0
+    assert [alert["alertText"] for alert in whirlpool["alerts"]] == ["28 g Цитра"]
+    assert whirlpool["alerts"][0]["trigger"] == "StepStart"
+
+
+def test_compiles_untimed_mash_rest_as_manual_step():
+    """A rest stated without a duration ("затирание при 67°") is kept as a
+    manual-advance rest instead of being dropped."""
+    untimed = MashStepType(
+        name="Осахаривание",
+        type="temperature",
+        step_temperature=TemperatureType(unit="C", value=67),
+    )
+    recipe = _base_recipe(mash_steps=[untimed, _rest(72, 20)])
+
+    profile = compile_brewzilla_profile(recipe)
+
+    rest = _step(profile, "Осахаривание")
+    assert rest["temperature"] == 67
+    assert rest["endType"] == "Manual"
+    assert rest["durationType"] == "Manual"
+    assert rest["length"] is None
+
+
 def test_preserves_rest_end_alerts_and_final_mash_out():
     rests = [
         _rest(temperature, duration)

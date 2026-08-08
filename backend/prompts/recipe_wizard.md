@@ -43,7 +43,10 @@ order is rejected):
     "step_temperature": {"unit": "C", "value": 66},
     "step_time": {"unit": "min", "value": 60}}]},
   "boil": {"pre_boil_size": {"unit": "l", "value": 25},
-    "boil_time": {"unit": "min", "value": 60}},
+    "boil_time": {"unit": "min", "value": 60},
+    "boil_steps": [{}, {"name": "...",
+      "start_temperature": {"unit": "C", "value": 95},
+      "step_time": {"unit": "min", "value": 20}}]},
   "fermentation": {"fermentation_steps": [{"name": "Primary",
     "start_temperature": {"unit": "C", "value": 18},
     "step_time": {"unit": "day", "value": 14}}]}
@@ -59,14 +62,17 @@ order is rejected):
   "week", color "EBC"/"Lovi"/"SRM", gravity "sg"/"plato"/"brix", percent "%",
   counted items (packets, tablets, fruit) "1"/"unit"/"each"/"pkg".
 - Every mash step requires `type` ("temperature" unless the source states an infusion
-  or decoction), `step_temperature` and `step_time` as measurement objects.
+  or decoction) and `step_temperature` as a measurement object. `step_time` is a
+  measurement object too, but only when the source states a duration for that rest.
 - A stated malt color in °L/Lovibond is `{"unit": "Lovi", "value": ...}`. A stated
   extract/yield percent ("экстрактивность 80%") is
   `yield.fine_grind = {"unit": "%", "value": 80}`.
 - Never drop a stated number: the header volume goes to `batch_size`, stated
-  brewhouse efficiency to `efficiency.brewhouse`, and EVERY hop or other addition
-  with a stated boil time gets `timing` with `use` and `duration`.
-- Extract only facts the source states. Never invent ingredients, mash steps,
+  brewhouse efficiency to `efficiency.brewhouse`, a stated whirlpool/stand temperature
+  to `boil.boil_steps[1].start_temperature`, and EVERY hop or other addition with a
+  stated boil time gets `timing` with `use` and `duration`. A number that ends up only
+  in `notes` is a dropped number.
+- Extract only facts the source states. Never invent ingredients, mash steps, amounts,
   durations, temperatures, gravities, or process stages from beer style or common
   practice. Never compute derived values; copy stated numbers with their stated units.
 - Detect the source language. Write `recipe.name`, `recipe.notes`, step names, and every
@@ -88,6 +94,17 @@ order is rejected):
   type/form. The yeast is often named only in the process text ("Ferment with X",
   "Брожение: X") and not in the ingredient list — always include it as a culture
   addition anyway.
+- `hop_additions[].form` is EXACTLY one of "extract", "leaf", "leaf (wet)", "pellet",
+  "powder", "plug" — BeerJSON has no other value. A cryo/lupulin hop ("Simcoe Cryo",
+  "Citra LupuLN2", "Cryo Cascade", "Лупулин Каскад", LupoMax) is concentrated lupulin
+  powder, so its form is "powder", never "pellet". Keep the stated variety name as it is
+  written, including the Cryo/LupuLN2 part — only `form` changes.
+- OMIT `amount` when the source states no quantity for that ingredient. This is normal
+  for yeast ("Дрожжи: Fermentis - Сафэль S-04" with no weight anywhere) and for
+  miscellaneous items. Never assume a package count, never fall back to a standard
+  sachet weight such as 11 g, and never scale a packet count from the batch size - an
+  unstated amount is absent, not guessed. Hops and fermentables are different: real
+  recipes always give their weights, so a missing hop or malt amount means you missed it.
 - Country and maker belong in `origin` and `producer`, not in `name`: "Магнум
   (Германия)" is `{"name": "Магнум", "origin": "Германия"}`, "Pilsner (Weyermann)" is
   `{"name": "Pilsner", "producer": "Weyermann"}`. Never leave a parenthesized country
@@ -103,16 +120,32 @@ order is rejected):
   "value": 15}}`. Dry hopping and fermentation additions use `add_to_fermentation`.
   `use` has no sparge value: additions to sparge/rinse water ("внесение в промывную
   воду") use `add_to_mash`.
-- Mash: every rest that has BOTH an explicit temperature and an explicit duration
-  becomes one entry of `recipe.mash.mash_steps` with `step_temperature` and
-  `step_time`. Omit rests missing either value. Keep a stated final mash-out rest as
-  the last mash step with its stated name. Put stated strike/mash water volume in the
-  first step's `amount`.
+- Mash: every rest with an explicit temperature becomes one entry of
+  `recipe.mash.mash_steps` with `step_temperature`, plus `step_time` when the source
+  states a duration for that rest. A rest stated without a duration ("затирание при
+  67°", "mash in at 50 °C") IS still a rest: emit it with `step_temperature` and no
+  `step_time` - the exporter turns it into a manual-advance step. Omit only rests with
+  no stated temperature. Keep a stated final mash-out rest as the last mash step with
+  its stated name. Put stated strike/mash water volume in the first step's `amount`.
 - Boil: put the total boil length in `recipe.boil.boil_time`. `boil_steps` is
-  positional with at most two entries: index 0 is the boil itself (optional), index 1
-  is the whirlpool/hopstand when the source has one, with its `step_time` (required)
-  and `start_temperature` (when stated). A stated whirlpool/settling time of 0 means
-  there is no whirlpool: omit the entry. A whirlpool addition gets
+  POSITIONAL with at most two entries: index 0 is ALWAYS the boil itself, index 1 is
+  ALWAYS the whirlpool/hopstand. A whirlpool therefore needs TWO entries - index 0 for
+  the boil (`{}`, or its own name/time/stated boil temperature) and index 1 for the
+  whirlpool. NEVER emit the whirlpool as the ONLY entry, and never put a stand time or
+  stand temperature at index 0: there they are read as the boil's own, so a 10-minute
+  stand becomes a 10-minute boil and an 80 °C stand becomes an 80 °C boil. A stated
+  post-boil stand ("Вирпул/отстой после кипячения: 20 мин") is a whirlpool and belongs
+  at index 1 with index 0 present. When the source states no whirlpool at all, omit
+  `boil_steps` entirely rather than emitting the boil by itself. The whirlpool entry
+  carries `step_time` when a
+  stand/settling time is stated and `start_temperature` when a stand temperature is
+  stated - at least one of the two, both when both are stated. A whirlpool stated with
+  only a temperature ("хмель на 95 °C", "во время охлаждения при 95 градусах") is still
+  a whirlpool: emit index 0 for the boil plus index 1 carrying `start_temperature`
+  alone. Never invent the field the source does not state: copying a duration from a
+  mash rest or a hop boil time into `step_time` is a fabrication. A stated
+  whirlpool/settling time of 0 means there is no whirlpool: omit the whirlpool entry.
+  A whirlpool addition gets
   `timing = {"use": "add_to_boil", "time": <boil_time>}` plus its contact `duration`
   when stated.
 - Fermentation: when the source states fermentation temperature or duration, add

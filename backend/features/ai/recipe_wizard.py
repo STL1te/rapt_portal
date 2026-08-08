@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from collections.abc import Callable
 
 from openai import BadRequestError
@@ -17,7 +18,22 @@ from .services import _load_prompt, _run_chat_completion
 logger = logging.getLogger(__name__)
 
 RECIPE_WIZARD_SYSTEM_PROMPT = _load_prompt("recipe_wizard.md")
-RECIPE_WIZARD_VALIDATOR_PROMPT = _load_prompt("recipe_wizard_validator.md")
+_VALIDATOR_PROMPT_RAW = _load_prompt("recipe_wizard_validator.md")
+_INVENTION_BLOCK = "<!-- inventions:start -->"
+# Two judges, two contracts. Against a real source, a value the source never states is a
+# fabrication worth rejecting. Against a hand-typed free-form DRAFT (freeform_rewrite.py)
+# it is not: partial drafts deliberately omit sections while the target spec keeps them,
+# so the invention rule rejected every partial rewrite (26/26) and half the full ones.
+# There the only question is whether the rewrite LOST a value.
+RECIPE_WIZARD_VALIDATOR_PROMPT = _VALIDATOR_PROMPT_RAW.replace(_INVENTION_BLOCK, "").replace(
+    "<!-- inventions:end -->", ""
+)
+RECIPE_WIZARD_VALIDATOR_PROMPT_OMISSIONS_ONLY = re.sub(
+    r"<!-- inventions:start -->.*?<!-- inventions:end -->\n*",
+    "",
+    _VALIDATOR_PROMPT_RAW,
+    flags=re.DOTALL,
+)
 _VALIDATOR_MAX_RESPONSE_CHARS = 50_000
 # Ceiling, not an allocation. 16k truncated long recipes on reasoning teachers:
 # thinking tokens share this budget with the pretty-printed JSON answer.
@@ -230,9 +246,18 @@ def _parse_semantic_validation(raw: str) -> list[str]:
     return [error.strip() for error in errors]
 
 
-async def _run_semantic_validator(description: str, submit: SubmitRecipe) -> str:
+async def _run_semantic_validator(
+    description: str, submit: SubmitRecipe, *, check_inventions: bool = True
+) -> str:
     messages = [
-        {"role": "system", "content": RECIPE_WIZARD_VALIDATOR_PROMPT},
+        {
+            "role": "system",
+            "content": (
+                RECIPE_WIZARD_VALIDATOR_PROMPT
+                if check_inventions
+                else RECIPE_WIZARD_VALIDATOR_PROMPT_OMISSIONS_ONLY
+            ),
+        },
         {
             "role": "user",
             "content": (
@@ -250,11 +275,20 @@ async def _run_semantic_validator(description: str, submit: SubmitRecipe) -> str
     )
 
 
-async def _semantic_recipe_errors(description: str, submit: SubmitRecipe) -> list[str]:
+async def _semantic_recipe_errors(
+    description: str, submit: SubmitRecipe, *, check_inventions: bool = True
+) -> list[str]:
+    """Compare `submit` against `description`. `check_inventions=False` drops the
+    fabrication half of the contract - use it when `description` is a free-form draft that
+    is allowed to omit what the spec keeps (see the prompt constants above)."""
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            return _parse_semantic_validation(await _run_semantic_validator(description, submit))
+            return _parse_semantic_validation(
+                await _run_semantic_validator(
+                    description, submit, check_inventions=check_inventions
+                )
+            )
         except (json.JSONDecodeError, ValueError) as error:
             last_error = error
             if attempt == 0:

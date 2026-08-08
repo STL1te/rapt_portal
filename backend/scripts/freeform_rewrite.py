@@ -59,12 +59,16 @@ _STYLES = (
 # the draft never mentions teaches it to invent them. Both directions are rejected by
 # the semantic gate, so an imprecise section name here just burns rewrites.
 _PARTIAL_CUTS = (
-    ("the mash rests (temperatures/durations) and the boil time, with no ingredients "
+    # "boil" carries the whole boil object, whirlpool boil_steps included, so the draft
+    # must narrate the stand too - otherwise the gate reports the spec's whirlpool as lost.
+    ("the mash rests (temperatures/durations), the boil time and the whirlpool/hopstand "
+     "when the recipe has one (its stand temperature and/or duration), with no ingredients "
      "at all — no grain bill, no hops, no additions", ("mash", "boil")),
     ("the recipe name and the ingredients — every ingredient in the recipe, including "
      "priming sugar and anything added during fermentation or at packaging, but no "
      "process details", ("name", "ingredients")),
-    ("the mash rests, the boil time and the hop additions with their timings — hops "
+    ("the mash rests, the boil time, the whirlpool/hopstand when the recipe has one (its "
+     "stand temperature and/or duration) and the hop additions with their timings — hops "
      "only, no grain bill and no non-hop additions (no finings, spices or flavourings)",
      ("mash", "boil", "hops")),
 )
@@ -160,7 +164,14 @@ async def _rewrite_one(
     if _CYRILLIC.search(rewrite) and not _CYRILLIC.search(source):
         return {"status": "language", "rewrite": rewrite}
     submit = SubmitRecipe.model_validate(spec)
-    errors = [e for e in await _semantic_recipe_errors(rewrite, submit) if not _cosmetic(e)]
+    # Omissions only: the gate asks whether the rewrite LOST a value. The spec was already
+    # verified against the real source during distillation, and a partial draft is meant to
+    # omit sections the spec keeps, so judging inventions here rejects correct rows.
+    errors = [
+        e
+        for e in await _semantic_recipe_errors(rewrite, submit, check_inventions=False)
+        if not _cosmetic(e)
+    ]
     if errors:
         return {"status": "mismatch", "rewrite": rewrite, "errors": errors}
     return {"status": "ok", "rewrite": rewrite}

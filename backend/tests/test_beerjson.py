@@ -301,6 +301,33 @@ def test_merge_overrides_both_none_is_empty():
     assert merged.model_dump(exclude_none=True) == {}
 
 
+def test_culture_and_misc_without_amount_export_schema_valid():
+    """Russian sources routinely name a yeast with no quantity ("Дрожжи: Сафэль S-04").
+    The amount stays absent internally instead of being invented as "1 pkg"; the
+    schema-required field is filled with a zero placeholder only at export."""
+    recipe = _minimal_recipe()
+    recipe = recipe.model_copy(
+        update={
+            "ingredients": recipe.ingredients.model_copy(
+                update={
+                    "culture_additions": [CultureAdditionType(name="Сафэль S-04", type="ale")],
+                    "miscellaneous_additions": [
+                        MiscellaneousAdditionType(name="Whirlfloc", type="fining")
+                    ],
+                }
+            )
+        }
+    )
+
+    document = to_beerjson_document(recipe)
+
+    assert recipe.ingredients.culture_additions[0].amount is None
+    assert_valid_beerjson(document)
+    exported = document["beerjson"]["recipes"][0]["ingredients"]
+    assert exported["culture_additions"][0]["amount"] == {"unit": "pkg", "value": 0}
+    assert exported["miscellaneous_additions"][0]["amount"] == {"unit": "g", "value": 0}
+
+
 def test_whirlpool_boil_step_without_step_time_is_accepted():
     """A stand stated only by temperature ("хмель на 95 °C") has no duration; rejecting
     it used to fail the whole extraction and drop the step."""

@@ -120,7 +120,11 @@ class CultureAdditionType(_BJ):
         None  # required by schema; often unstated
     )
     producer: str | None = Field(default=None, min_length=1, max_length=100)
-    amount: MassType | VolumeType | UnitType
+    # Required by schema (in an allOf branch), but mandatory here forced the teacher to
+    # invent a quantity for every recipe naming a yeast without one ("Дрожжи: Fermentis -
+    # Сафэль S-04"): 951 such amounts, mostly an assumed "1 pkg" scaled to 2-4 pkg by
+    # batch size. Absent internally, placeholder at export - see module docstring.
+    amount: MassType | VolumeType | UnitType | None = None
     attenuation: PercentType | None = None
     timing: TimingType | None = None
 
@@ -130,7 +134,7 @@ class MiscellaneousAdditionType(_BJ):
     type: Literal["spice", "fining", "water agent", "herb", "flavor", "wood", "other"] | None = (
         None  # required by schema; often unstated
     )
-    amount: MassType | VolumeType | UnitType
+    amount: MassType | VolumeType | UnitType | None = None  # required by schema, see above
     timing: TimingType | None = None
 
 
@@ -267,6 +271,14 @@ def _unknown_yield() -> dict:
     return {"fine_grind": {"unit": "%", "value": 0}}
 
 
+def _unknown_culture_amount() -> dict:
+    return {"unit": "pkg", "value": 0}
+
+
+def _unknown_misc_amount() -> dict:
+    return {"unit": "g", "value": 0}
+
+
 def _default_grain_temperature() -> dict:
     return {"unit": "C", "value": 20}
 
@@ -320,8 +332,12 @@ def to_beerjson_document(recipe: RecipeModel) -> dict:
     for culture in data["ingredients"].get("culture_additions") or []:
         culture.setdefault("type", _UNKNOWN_CULTURE_TYPE)
         culture.setdefault("form", _UNKNOWN_CULTURE_FORM)
+        if "amount" not in culture:
+            culture["amount"] = _unknown_culture_amount()
 
     for misc in data["ingredients"].get("miscellaneous_additions") or []:
         misc.setdefault("type", _UNKNOWN_MISC_TYPE)
+        if "amount" not in misc:
+            misc["amount"] = _unknown_misc_amount()
 
     return {"beerjson": {"version": 1, "recipes": [data]}}

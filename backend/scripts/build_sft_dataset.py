@@ -83,12 +83,18 @@ def main() -> None:
         parser.error("pairs must be alternating RESULTS CORPUS paths (even count)")
 
     system_prompt = args.system.read_text(encoding="utf-8").strip()
-    frozen_specs = {
-        json.loads(line)["messages"][-1]["content"]
+    frozen_rows = [
+        json.loads(line)
         for path in args.frozen
         for line in path.read_text(encoding="utf-8").split("\n")
         if line.strip()
-    }
+    ]
+    frozen_specs = {row["messages"][-1]["content"] for row in frozen_rows}
+    # Also key on the USER turn: a held-out recipe is identified by its source text, which
+    # never changes, whereas the target does the moment an extraction rule is fixed. Spec
+    # matching alone silently under-matched (65 of 88 after the whirlpool + culture-amount
+    # corrections), which would have leaked 23 test recipes into train.
+    frozen_sources = {row["messages"][1]["content"].strip() for row in frozen_rows}
     frozen_hits = 0
     # (recipe key, spec as recorded, example). One recipe yields several examples -
     # the distillation row, its freeform rewrite, its partial cuts - all sharing a
@@ -154,7 +160,11 @@ def main() -> None:
     # rewrite carries the very same target, so keeping the sibling would put the
     # answer in train. Matching a frozen row identifies the recipe, then the whole
     # group goes - not just the row that matched.
-    frozen_groups = {group for group, compact, _ in entries if compact in frozen_specs}
+    frozen_groups = {
+        group
+        for group, compact, example in entries
+        if compact in frozen_specs or example["messages"][1]["content"] in frozen_sources
+    }
     if frozen_groups:
         kept = [entry for entry in entries if entry[0] not in frozen_groups]
         frozen_hits = len(entries) - len(kept)
