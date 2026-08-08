@@ -8,9 +8,9 @@ stay absent in the internal model - inventing a value would corrupt training dat
 `to_beerjson_document` fills schema-mandated placeholders only at the export boundary.
 """
 
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _BJ(BaseModel):
@@ -234,13 +234,6 @@ class RecipeModel(_BJ):
     mash: MashProcedureType | None = None
     boil: BoilProcedureType | None = None
     fermentation: FermentationProcedureType | None = None
-
-    @model_validator(mode="after")
-    def boil_steps_follow_convention(self) -> Self:
-        steps = (self.boil.boil_steps if self.boil else None) or []
-        if len(steps) == 2 and steps[1].step_time is None:
-            raise ValueError("whirlpool boil step requires step_time")
-        return self
 
 
 _EXPORT_DEFAULTS = {

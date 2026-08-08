@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -302,21 +301,29 @@ def test_merge_overrides_both_none_is_empty():
     assert merged.model_dump(exclude_none=True) == {}
 
 
-def test_whirlpool_boil_step_without_step_time_is_rejected():
+def test_whirlpool_boil_step_without_step_time_is_accepted():
+    """A stand stated only by temperature ("хмель на 95 °C") has no duration; rejecting
+    it used to fail the whole extraction and drop the step."""
     boil_time = TimeType(unit="min", value=60)
-    with pytest.raises(ValidationError, match="step_time"):
-        RecipeModel(
-            name="Bad Whirlpool",
-            notes="Whirlpool step missing step_time must be rejected.",
-            ingredients=IngredientsType(
-                fermentable_additions=[
-                    FermentableAdditionType(
-                        name="Pale Malt", type="grain", amount=MassType(unit="kg", value=5)
-                    )
-                ]
-            ),
-            boil=BoilProcedureType(
-                boil_time=boil_time,
-                boil_steps=[BoilStepType(step_time=boil_time), BoilStepType(name="Whirlpool")],
-            ),
-        )
+    recipe = RecipeModel(
+        name="Untimed Whirlpool",
+        notes="Whirlpool step without step_time compiles to a manual-advance step.",
+        ingredients=IngredientsType(
+            fermentable_additions=[
+                FermentableAdditionType(
+                    name="Pale Malt", type="grain", amount=MassType(unit="kg", value=5)
+                )
+            ]
+        ),
+        boil=BoilProcedureType(
+            boil_time=boil_time,
+            boil_steps=[
+                BoilStepType(step_time=boil_time),
+                BoilStepType(
+                    name="Whirlpool", start_temperature=TemperatureType(unit="C", value=95)
+                ),
+            ],
+        ),
+    )
+    assert recipe.boil.boil_steps[1].step_time is None
+    assert_valid_beerjson(to_beerjson_document(recipe))

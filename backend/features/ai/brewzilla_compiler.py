@@ -349,7 +349,11 @@ def compile_brewzilla_profile(
             if whirlpool_step.start_temperature is not None
             else boil_c
         )
-        whirlpool_seconds = to_seconds(whirlpool_step.step_time)
+        # None = the source names a stand temperature but no duration ("хмель на 95 °C"):
+        # a manual-advance step, same convention as an untimed mash rest.
+        whirlpool_seconds = (
+            to_seconds(whirlpool_step.step_time) if whirlpool_step.step_time else None
+        )
         whirlpool_alerts = []
         if (
             whirlpool_step.start_temperature is not None
@@ -362,19 +366,22 @@ def compile_brewzilla_profile(
         if ov.whirlpool_end_alert_text:
             whirlpool_alerts.append(_alert(ov.whirlpool_end_alert_text, "StepEnd"))
         for addition, time_s in whirlpool_additions:
-            length = max(0, min(time_s - boil_seconds, whirlpool_seconds))
             text = (
                 f"{format_amount(addition.amount)} {addition.name}"
                 if addition.amount
                 else addition.name
             )
-            whirlpool_alerts.append(_alert(text, "Duration", length=length))
+            if whirlpool_seconds is None:
+                whirlpool_alerts.append(_alert(text, "StepStart"))
+            else:
+                length = max(0, min(time_s - boil_seconds, whirlpool_seconds))
+                whirlpool_alerts.append(_alert(text, "Duration", length=length))
         steps.append(
             _step(
                 whirlpool_step.name or "Whirlpool",
                 whirlpool_c,
-                end_type="Duration",
-                duration_type="Temperature",
+                end_type="Duration" if whirlpool_seconds is not None else "Manual",
+                duration_type="Temperature" if whirlpool_seconds is not None else "Manual",
                 length=whirlpool_seconds,
                 heating=0,
                 pid=False,
