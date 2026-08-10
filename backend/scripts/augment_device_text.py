@@ -300,6 +300,76 @@ def check(args: argparse.Namespace) -> None:
         print("\n".join(misses))
 
 
+_POWER_MARKER = re.compile(r"%|процент|мощност|power", re.IGNORECASE)
+_PID_MARKER = re.compile(r"\bПИД\b|\bPID\b", re.IGNORECASE)
+_ALERT_MARKER = re.compile(
+    r"предупрежд|уведом|сигнал|оповещ|alert|notif", re.IGNORECASE
+)
+
+
+def _rewrite_keeps(field: str, want, rewrite: str) -> bool:
+    """Did the free-form rewrite keep what the device paragraph stated?"""
+    if field in ("heat_power_pct", "rest_power_pct"):
+        # Number alone is not enough (a boil time of 90 min would pass), and a marker
+        # alone is not enough (the other power's mention would pass): require both.
+        return bool(re.search(rf"\b{int(want)}\b", rewrite)) and bool(
+            _POWER_MARKER.search(rewrite)
+        )
+    if field == "mash_pid_enabled":
+        return bool(_PID_MARKER.search(rewrite))
+    return bool(_ALERT_MARKER.search(rewrite))
+
+
+def check_rewrites(args: argparse.Namespace) -> None:
+    """Guard the device rows through free-form rewriting.
+
+    The freeform gate runs with check_inventions=False, so it never asks whether the
+    rewrite still STATES what the spec claims - a rewriter that drops the device
+    paragraph produces a row teaching the model to invent 90% power out of nothing.
+    The sidecar knows what was injected, so this check is exact and costs no API call.
+    """
+    sidecar = {
+        entry["out_index"]: entry
+        for line in args.sidecar.read_text(encoding="utf-8").split("\n")
+        if line.strip()
+        for entry in [json.loads(line)]
+    }
+    rows = [
+        json.loads(line)
+        for line in args.rewrites.read_text(encoding="utf-8").split("\n")
+        if line.strip()
+    ]
+    per_field: dict[str, list[int]] = {}
+    kept, dropped, scored = [], [], 0
+    for row in rows:
+        entry = sidecar.get(row["index"])
+        if row.get("status") != "ok" or not entry or not row.get("rewrite"):
+            continue
+        scored += 1
+        lost = []
+        for field, want in entry["expected"].items():
+            ok = _rewrite_keeps(field, want, row["rewrite"])
+            per_field.setdefault(field, [0, 0])
+            per_field[field][1] += 1
+            per_field[field][0] += ok
+            if not ok:
+                lost.append(field)
+        (dropped if lost else kept).append((row, lost))
+
+    print(f"scored {scored} rewrites: {len(kept)} keep every stated setting, "
+          f"{len(dropped)} lost at least one")
+    for field, (hits, total) in sorted(per_field.items(), key=lambda kv: -kv[1][1]):
+        print(f"  {field:24} {hits:5}/{total:<5} {hits / max(total, 1):5.0%}")
+    for row, lost in dropped[:10]:
+        print(f"  drop index={row['index']}: lost {', '.join(lost)}")
+    if args.out:
+        args.out.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row, _ in kept),
+            encoding="utf-8",
+        )
+        print(f"wrote {len(kept)} clean rewrites to {args.out}")
+
+
 def selftest() -> None:
     """Every stated number must survive into `expected`, or the gate scores noise."""
     rng = random.Random(0)
@@ -322,6 +392,15 @@ def selftest() -> None:
     row = {"name": "x", "style_full": "s", "type": "Зерновой", "volume": "20",
            "full_description": "Паузы: 63°C - 30 мин"}
     assert "МАРКЕР" in _source(_augment_row(row, "МАРКЕР"))
+
+    # The rewrite guard must fail exactly when the device wording is gone.
+    assert _rewrite_keeps("heat_power_pct", 90.0, "греем на 90% мощности")
+    assert not _rewrite_keeps("heat_power_pct", 90.0, "кипятим 90 минут")  # number only
+    assert not _rewrite_keeps("heat_power_pct", 90.0, "мощность 50%")  # marker only
+    assert _rewrite_keeps("mash_pid_enabled", True, "держим паузы с ПИД")
+    assert not _rewrite_keeps("mash_pid_enabled", True, "держим паузы ровно")
+    assert _rewrite_keeps("rest_end_alerts", "nonempty", "сигнал в конце паузы")
+    assert not _rewrite_keeps("rest_end_alerts", "nonempty", "затираем и кипятим")
     print("selftest ok")
 
 
@@ -341,11 +420,19 @@ def main() -> None:
     parser.add_argument("--min-rests", type=int, default=3)
     parser.add_argument("--seed", type=int, default=7, help="device paragraph randomness")
     parser.add_argument("--check", nargs=2, metavar=("RESULTS", "SIDECAR"), type=Path)
+    parser.add_argument(
+        "--check-rewrites", nargs=2, metavar=("FREEFORM_RESULTS", "SIDECAR"), type=Path,
+        help="the freeform gate cannot see a dropped device paragraph; this can",
+    )
+    parser.add_argument("--out", type=Path, help="with --check-rewrites: write the clean rows")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
     if args.selftest:
         return selftest()
+    if args.check_rewrites:
+        args.rewrites, args.sidecar = args.check_rewrites
+        return check_rewrites(args)
     if args.check:
         args.results, args.sidecar = args.check
         return check(args)

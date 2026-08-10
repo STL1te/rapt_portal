@@ -25,6 +25,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH is unset
 
+# Progress lines carry validator errors quoting ingredient names, so a Windows console
+# in cp1251 kills an hour-long run with UnicodeEncodeError at a random row.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from pydantic import ValidationError
 
 from core.config import _llm
