@@ -41,6 +41,18 @@ class LLMConfig:
     extra_body: dict
 
 
+def _parse_extra_body(raw: str) -> dict:
+    """JSON dict, or a quote-free `key=value,key=value` list — CasaOS strips quotes
+    from env values, so the JSON form is untypeable there.
+    ponytail: flat string values only; use the JSON form if a param needs a nested
+    object or a non-string type."""
+    if not raw:
+        return {}
+    if raw.lstrip().startswith("{"):
+        return json.loads(raw)
+    return dict(pair.split("=", 1) for pair in raw.split(",") if pair.strip())
+
+
 def _llm(prefix: str) -> LLMConfig:
     """Read {PREFIX}_LLM_* env vars, falling back to the shared legacy LLM_* ones."""
 
@@ -63,7 +75,7 @@ def _llm(prefix: str) -> LLMConfig:
         response_format=response_format,
         sampling=sampling,
         validator_model=get("VALIDATOR_MODEL") or None,
-        extra_body=json.loads(get("EXTRA_BODY") or "{}"),
+        extra_body=_parse_extra_body(get("EXTRA_BODY")),
     )
 
 

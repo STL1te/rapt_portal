@@ -105,10 +105,10 @@ async def _run_one(
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
-            response_format=response_format,
             temperature=0,
             max_tokens=16_384,
             timeout=timeout,
+            **({"response_format": response_format} if response_format else {}),
         )
         raw = response.choices[0].message.content or ""
     except Exception as error:  # noqa: BLE001 — record and move on, eval must finish
@@ -159,8 +159,18 @@ async def main() -> None:
         help="drop empty-string values before validation (grammar-forced keys the "
              "model had no value for)",
     )
+    parser.add_argument(
+        "--no-response-format", action="store_true",
+        help="send no response_format at all. Ollama renders the schema into the "
+             "prompt as a tool definition for tool-capable templates, which derails "
+             "a student trained to answer with bare JSON (empty content, prose in "
+             "`reasoning`). The SFT target IS the grammar, so unconstrained is fine.",
+    )
     args = parser.parse_args()
-    response_format = _RELAXED_RESPONSE_FORMAT if args.relaxed_schema else _RECIPE_RESPONSE_FORMAT
+    if args.no_response_format:
+        response_format = None
+    else:
+        response_format = _RELAXED_RESPONSE_FORMAT if args.relaxed_schema else _RECIPE_RESPONSE_FORMAT
 
     examples = [
         json.loads(line)
