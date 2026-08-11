@@ -108,6 +108,9 @@ async def _run_one(
             temperature=0,
             max_tokens=16_384,
             timeout=timeout,
+            # Gemma-4 12B keeps reasoning even after SFT: the trace lands in `reasoning`,
+            # leaving `content` empty, or runs past the context window. E4B stops on its own.
+            extra_body={"reasoning_effort": "none"},
             **({"response_format": response_format} if response_format else {}),
         )
         raw = response.choices[0].message.content or ""
