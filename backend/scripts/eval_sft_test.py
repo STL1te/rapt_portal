@@ -11,9 +11,9 @@ Results append to OUTPUT as JSONL (resumable by example index); a summary prints
 the end. Teacher specs aren't unique ground truth, so leaf match is a drift signal,
 not an exact-accuracy metric.
 
-Usage (from backend/):
-  uv run python scripts\\eval_sft_test.py D:\\Work\\projects\\beer_knowledge\\data\\sft_distil\\test.jsonl ^
-    D:\\Work\\projects\\beer_knowledge\\data\\sft_distil\\eval_student.jsonl ^
+Usage (from backend/). Outputs belong in data/sft/eval/, not next to the dataset:
+  uv run python scripts\\eval_sft_test.py D:\\Work\\projects\\beer_knowledge\\data\\sft\\v6\\test.jsonl ^
+    D:\\Work\\projects\\beer_knowledge\\data\\sft\\eval\\eval_student_v6_e4b_q8.jsonl ^
     --base-url http://localhost:1234/v1 --model gemma-4-e4b-it
 """
 
