@@ -45,6 +45,22 @@ export type ProfileStepAlert = ProfileAlert & {
   length: number | null
 }
 
+// Alerts are stored in RAPT's own order; this sorts them into firing order:
+// step start → timed offset → condition (no fixed time) → step end.
+const ALERT_ORDER: Record<AlertTrigger, number> = {
+  StepStart: 0,
+  Duration: 1,
+  Temperature: 2,
+  Gravity: 2,
+  GravityVelocity: 2,
+  StepEnd: 3,
+}
+export function byTriggerTime(a: ProfileAlert, b: ProfileAlert): number {
+  const rank = (x: ProfileAlert) => (x.trigger ? ALERT_ORDER[x.trigger] : 9)
+  const len = (x: ProfileAlert) => (x as ProfileStepAlert).length ?? 0
+  return rank(a) - rank(b) || len(a) - len(b)
+}
+
 export type ProfileStep = {
   id: string | null
   name: string | null

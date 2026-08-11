@@ -5,6 +5,7 @@ import { deleteProfile, getProfile, getSystemJob, uploadProfile } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import MetricCard from '@/components/MetricCard'
 import type { ControlType, EndType, ProfileStep, SystemJob } from '@/types'
+import { byTriggerTime } from '@/types/profile'
 import { stepLen, temp } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
 
@@ -264,7 +265,10 @@ export default function ProfileDetail() {
                     <td data-label="Алерты">
                       {st.alerts.length ? (
                         <ul className="step-alerts">
-                          {st.alerts.map((a, i) => (
+                          {st.alerts
+                            .slice()
+                            .sort(byTriggerTime)
+                            .map((a, i) => (
                             <li key={a.id ?? i}>{a.alertText ?? a.trigger ?? '—'}</li>
                           ))}
                         </ul>

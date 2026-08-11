@@ -2,7 +2,7 @@ import { type DragEvent, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createProfile, getProfile, getProfileTypes, updateProfile } from '@/api'
-import { CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
+import { byTriggerTime, CONTROL_TYPES, DURATION_TYPES, END_TYPES } from '@/types/profile'
 import type {
   AlertTrigger,
   ControlType,
@@ -322,6 +322,22 @@ function AlertsEditor({
       >
         <i className="fa-solid fa-plus" /> алерт
       </button>
+      {/* profile-level alerts are all condition-based — nothing to order there */}
+      {step && alerts.length > 1 ? (
+        <button
+          type="button"
+          className="link-btn"
+          title="Старт шага → по таймеру → по условию → конец шага"
+          // rows are keyed by index for unsaved alerts, so drop the per-row unit
+          // overrides — they'd stay pinned to the old positions after the reorder
+          onClick={() => {
+            setUnits({})
+            onChange(alerts.slice().sort(byTriggerTime))
+          }}
+        >
+          <i className="fa-solid fa-arrow-down-1-9" /> по времени
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -790,7 +806,14 @@ export default function ProfileEditor() {
       profile_type_name: types?.find((t) => t.id === typeId)?.name ?? null,
       // Pill profiles have no steps — only profile-level alerts
       // _uid is a local-only key; backend StepIn ignores it and _pick drops it
-      steps: kind === 'pill' ? [] : steps.map((st, i) => ({ ...st, order: i })),
+      steps:
+        kind === 'pill'
+          ? []
+          : steps.map((st, i) => ({
+              ...st,
+              order: i,
+              alerts: st.alerts.slice().sort(byTriggerTime),
+            })),
       alerts,
     }
     setSaving(true)
