@@ -8,7 +8,7 @@ from collections.abc import Callable
 from openai import BadRequestError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from core.config import WIZARD_LLM
+from core.config import VALIDATOR_LLM, WIZARD_LLM, LLMConfig
 
 from .beerjson_models import RecipeModel, to_beerjson_document
 from .brewzilla_compiler import compile_brewzilla_profile
@@ -107,16 +107,18 @@ def _preview(raw: str) -> str:
     return compact
 
 
-def _response_format_fallbacks(schema_format: dict) -> tuple[tuple[str, dict], ...]:
+def _response_format_fallbacks(
+    schema_format: dict, llm: LLMConfig = WIZARD_LLM
+) -> tuple[tuple[str, dict], ...]:
     formats = {
         "json_schema": ("JSON Schema", schema_format),
         "json_object": ("JSON mode", _JSON_OBJECT_RESPONSE_FORMAT),
     }
-    if WIZARD_LLM.response_format == "auto":
+    if llm.response_format == "auto":
         return formats["json_schema"], formats["json_object"]
-    if WIZARD_LLM.response_format == "none":
+    if llm.response_format == "none":
         return ()
-    return (formats[WIZARD_LLM.response_format],)
+    return (formats[llm.response_format],)
 
 
 def _strip_code_fences(raw: str) -> str:
@@ -133,17 +135,17 @@ async def _run_json_completion(
     schema_format: dict,
     *,
     max_tokens: int | None = None,
-    model: str | None = None,
+    llm: LLMConfig = WIZARD_LLM,
 ) -> str:
     request = {
-        "llm": WIZARD_LLM,
+        "llm": llm,
         "tools": None,
         "current_session_id": None,
         "temperature": 0,
         "max_tokens": max_tokens,
-        "model": model,
+        "model": None,
     }
-    response_formats = _response_format_fallbacks(schema_format)
+    response_formats = _response_format_fallbacks(schema_format, llm)
     for index, (name, response_format) in enumerate(response_formats):
         try:
             return await _run_chat_completion(
@@ -155,25 +157,23 @@ async def _run_json_completion(
             if "response_format" not in str(error).lower():
                 raise
             logger.error(error)
-            fallback_available = (
-                index < len(response_formats) - 1 or WIZARD_LLM.response_format == "auto"
-            )
+            fallback_available = index < len(response_formats) - 1 or llm.response_format == "auto"
             logger.warning(
                 "LLM response format is incompatible: model=%s base_url=%s format=%s status=%s; %s",
-                WIZARD_LLM.model,
-                WIZARD_LLM.base_url,
+                llm.model,
+                llm.base_url,
                 name,
                 error.status_code,
                 "trying the next format" if fallback_available else "no fallback is configured",
             )
             if not fallback_available:
                 raise
-    if WIZARD_LLM.response_format == "auto":
+    if llm.response_format == "auto":
         logger.warning(
             "LLM supports neither JSON Schema nor JSON mode: model=%s base_url=%s; "
             "retrying without response_format",
-            WIZARD_LLM.model,
-            WIZARD_LLM.base_url,
+            llm.model,
+            llm.base_url,
         )
     return await _run_chat_completion(messages, **request)
 
@@ -194,9 +194,7 @@ def _strip_empty_strings(node):
     element for an empty list. Removing them restores the object pydantic expects.
     A null *value* is kept - for a nullable field it is the honest answer."""
     if isinstance(node, dict):
-        return {
-            key: _strip_empty_strings(value) for key, value in node.items() if value != ""
-        }
+        return {key: _strip_empty_strings(value) for key, value in node.items() if value != ""}
     if isinstance(node, list):
         return [_strip_empty_strings(value) for value in node if value is not None]
     return node
@@ -271,7 +269,7 @@ async def _run_semantic_validator(
         messages,
         _RECIPE_WIZARD_VALIDATOR_RESPONSE_FORMAT,
         max_tokens=_MAX_COMPLETION_TOKENS,
-        model=WIZARD_LLM.validator_model,
+        llm=VALIDATOR_LLM,
     )
 
 

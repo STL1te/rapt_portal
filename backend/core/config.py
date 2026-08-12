@@ -34,11 +34,20 @@ class LLMConfig:
     # (принимают только дефолт, иначе 400) и слать max_completion_tokens вместо
     # устаревшего max_tokens.
     sampling: str
-    # Optional stronger judge for recipe-wizard semantic validation; empty = model.
-    validator_model: str | None
     # JSON dict of provider-specific request params (e.g. {"enable_thinking": false}
     # for Qwen on DashScope); sent as extra_body, empty = nothing extra.
     extra_body: dict
+
+
+_LLM_DEFAULTS = LLMConfig(
+    base_url="http://host.docker.internal:11434/v1",
+    api_key="not-needed",
+    model="local-model",
+    timeout=900.0,
+    response_format="auto",
+    sampling="default",
+    extra_body={},
+)
 
 
 def _parse_extra_body(raw: str) -> dict:
@@ -53,29 +62,45 @@ def _parse_extra_body(raw: str) -> dict:
     return dict(pair.split("=", 1) for pair in raw.split(",") if pair.strip())
 
 
-def _llm(prefix: str) -> LLMConfig:
-    """Read {PREFIX}_LLM_* env vars, falling back to the shared legacy LLM_* ones."""
+def _llm(prefix: str, inherit: LLMConfig | None = None) -> LLMConfig:
+    """Read {PREFIX}_LLM_* env vars, falling back to the shared legacy LLM_* ones.
 
-    def get(name: str, default: str = "") -> str:
-        return (os.getenv(f"{prefix}_LLM_{name}") or os.getenv(f"LLM_{name}") or default).strip()
+    With `inherit`, the role extends another one instead: only {PREFIX}_LLM_* is read and
+    anything unset comes from that config, so a role that overrides just the model keeps
+    the endpoint, credentials and provider quirks of the role it extends. The legacy
+    LLM_* names are skipped there — the inherited config already resolved them.
+    """
+    base = inherit or _LLM_DEFAULTS
 
-    response_format = get("RESPONSE_FORMAT", "auto").lower()
+    def get(name: str, default: str) -> str:
+        value = os.getenv(f"{prefix}_LLM_{name}")
+        if value is None and inherit is None:
+            value = os.getenv(f"LLM_{name}")
+        return (value or default).strip()
+
+    response_format = get("RESPONSE_FORMAT", base.response_format).lower()
     if response_format not in {"auto", "json_schema", "json_object", "none"}:
         raise ValueError(
             f"{prefix}_LLM_RESPONSE_FORMAT must be one of: auto, json_schema, json_object, none"
         )
-    sampling = get("SAMPLING", "default").lower()
+    sampling = get("SAMPLING", base.sampling).lower()
     if sampling not in {"default", "none"}:
         raise ValueError(f"{prefix}_LLM_SAMPLING must be one of: default, none")
+    # Unset inherits; set-but-empty means "no extra params", which is the whole point of
+    # a judge that must not be told reasoning_effort=none.
+    raw_extra_body = os.getenv(f"{prefix}_LLM_EXTRA_BODY")
+    if raw_extra_body is None and inherit is None:
+        raw_extra_body = os.getenv("LLM_EXTRA_BODY")
     return LLMConfig(
-        base_url=get("BASE_URL", "http://host.docker.internal:11434/v1"),
-        api_key=get("API_KEY", "not-needed"),
-        model=get("MODEL", "local-model"),
-        timeout=float(get("TIMEOUT_SECONDS", "900")),
+        base_url=get("BASE_URL", base.base_url),
+        api_key=get("API_KEY", base.api_key),
+        model=get("MODEL", base.model),
+        timeout=float(get("TIMEOUT_SECONDS", str(base.timeout))),
         response_format=response_format,
         sampling=sampling,
-        validator_model=get("VALIDATOR_MODEL") or None,
-        extra_body=_parse_extra_body(get("EXTRA_BODY")),
+        extra_body=(
+            base.extra_body if raw_extra_body is None else _parse_extra_body(raw_extra_body.strip())
+        ),
     )
 
 
@@ -83,6 +108,9 @@ def _llm(prefix: str) -> LLMConfig:
 WIZARD_LLM = _llm("WIZARD")
 # Облачная модель — AI-ассистент (чаты по варкам/ферментации/рецептам).
 ASSISTANT_LLM = _llm("ASSISTANT")
+# Судья семантической валидации рецептов. Наследует всё от WIZARD: по умолчанию это та же
+# модель на том же эндпоинте, а VALIDATOR_LLM_* переопределяет ровно то, что нужно.
+VALIDATOR_LLM = _llm("VALIDATOR", WIZARD_LLM)
 
 # Зашиты в код: подбираются под модель, а не под окружение.
 LLM_TEMPERATURE = 0.2

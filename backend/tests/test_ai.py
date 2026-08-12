@@ -31,6 +31,7 @@ from features.ai.beerjson_schema import assert_valid_beerjson
 from features.ai.brewzilla_overrides import BrewZillaOverrides
 from features.ai.recipe_wizard import (
     RECIPE_WIZARD_VALIDATOR_PROMPT,
+    VALIDATOR_LLM,
     WIZARD_LLM,
     SubmitRecipe,
     _parse_semantic_validation,
@@ -345,7 +346,8 @@ def test_semantic_validator_honors_configured_response_format(monkeypatch):
 
 async def test_semantic_validator_falls_back_through_json_formats(monkeypatch, caplog):
     requests: list[dict] = []
-    monkeypatch.setattr(WIZARD_LLM, "response_format", "auto")
+    # The judge is a separate config, resolved from WIZARD at import — patch it directly.
+    monkeypatch.setattr(VALIDATOR_LLM, "response_format", "auto")
 
     async def complete(_messages, **kwargs):
         requests.append(kwargs)
@@ -714,8 +716,12 @@ async def test_generate_profile_happy_path(install_llm, monkeypatch):
     assert "ingredient names copied character for character" in validator_system
 
 
-async def test_semantic_validator_uses_dedicated_judge_model(install_llm, monkeypatch):
-    monkeypatch.setattr(WIZARD_LLM, "validator_model", "judge-model")
+async def test_semantic_validator_uses_dedicated_judge_config(install_llm, monkeypatch):
+    """The judge is its own role: overriding it must not leak into extraction, and the
+    extraction model's provider quirks must not leak into the judge."""
+    monkeypatch.setattr(VALIDATOR_LLM, "model", "judge-model")
+    monkeypatch.setattr(VALIDATOR_LLM, "extra_body", {})
+    monkeypatch.setattr(WIZARD_LLM, "extra_body", {"reasoning_effort": "none"})
     factory = install_llm(
         [_recipe_message()],
         [_message(_VALID_SEMANTIC_VALIDATION)],
@@ -724,7 +730,9 @@ async def test_semantic_validator_uses_dedicated_judge_model(install_llm, monkey
     await generate_profile("Кип 60 минут")
 
     assert factory.requests[0]["model"] != "judge-model"
+    assert factory.requests[0]["extra_body"] == {"reasoning_effort": "none"}
     assert factory.requests[1]["model"] == "judge-model"
+    assert "extra_body" not in factory.requests[1]
 
 
 async def test_generate_profile_applies_user_overrides_over_extracted(install_llm):
