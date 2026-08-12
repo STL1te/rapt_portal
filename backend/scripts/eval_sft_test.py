@@ -75,11 +75,19 @@ def _leaves(node, path=""):
         yield path, node
 
 
+# Free text: the teacher's wording is one of many correct ones, so exact agreement was
+# never the target. Left in, they disagreed on ~95% of examples and dominated the mismatch
+# ranking, hiding the fields that actually matter.
+_FREE_TEXT_PATHS = frozenset({"recipe.notes", "recipe.name"})
+
+
 def _leaf_match(reference: dict, candidate: dict) -> tuple[int, int, list[str]]:
-    """(matched, total, mismatched paths) over the reference's leaves."""
+    """(matched, total, mismatched paths) over the reference's leaves, minus free text."""
     candidate_leaves = dict(_leaves(candidate))
     matched, total, mismatches = 0, 0, []
     for path, expected in _leaves(reference):
+        if path in _FREE_TEXT_PATHS:
+            continue
         total += 1
         actual = candidate_leaves.get(path)
         if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
@@ -159,7 +167,7 @@ async def _run_one(
     else:
         record = {"status": "ok"}
     matched, total, mismatches = _leaf_match(reference, spec)
-    record.update({"leaf_matched": matched, "leaf_total": total, "mismatches": mismatches[:20]})
+    record.update({"leaf_matched": matched, "leaf_total": total, "mismatches": mismatches})
     return record
 
 
