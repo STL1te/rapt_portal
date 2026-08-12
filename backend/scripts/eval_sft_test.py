@@ -4,7 +4,8 @@ Replays each example's system+user messages against an OpenAI-compatible endpoin
 (LM Studio) with the same json_schema response_format production uses, then scores:
   - parse: response is valid JSON
   - schema: SubmitRecipe validates
-  - compile: compile_brewzilla_profile succeeds
+  - compile: compile_brewzilla_profile succeeds. Records whose own teacher spec fails
+    the same check are scored `compile_na`, not charged to the model.
   - leaf match vs the teacher spec: flattened (path, value) leaves, numeric tolerance 1%
 
 Results append to OUTPUT as JSONL (resumable by example index); a summary prints at
@@ -21,6 +22,7 @@ import argparse
 import asyncio
 import json
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH is unset
@@ -90,6 +92,19 @@ def _leaf_match(reference: dict, candidate: dict) -> tuple[int, int, list[str]]:
     return matched, total, mismatches
 
 
+@lru_cache(maxsize=None)
+def _reference_compiles(reference_json: str) -> bool:
+    """Does the teacher's own spec survive the compile stage? Some sources state no mash
+    schedule at all, and an all-grain recipe without one cannot be compiled — by anybody.
+    Cached on the raw JSON so each test record is compiled once, not once per model."""
+    try:
+        submit = SubmitRecipe.model_validate(json.loads(reference_json))
+        compile_brewzilla_profile(submit.recipe, submit.brewzilla_overrides)
+    except Exception:  # noqa: BLE001 — any failure means "not a fair check", not a crash
+        return False
+    return True
+
+
 async def _run_one(
     client: AsyncOpenAI,
     model: str,
@@ -134,13 +149,17 @@ async def _run_one(
     try:
         compile_brewzilla_profile(submit.recipe, submit.brewzilla_overrides)
     except Exception as error:  # noqa: BLE001 — compiler raises plain ValueError/TypeError
-        record = {"status": "compile_error", "error": f"{type(error).__name__}: {error}"}
+        # Some sources state no mash schedule at all, so the teacher's own spec does not
+        # compile either. Charging that to the student measures the corpus, not the model.
+        record = (
+            {"status": "compile_na", "error": f"{type(error).__name__}: {error}"}
+            if not _reference_compiles(example["messages"][-1]["content"])
+            else {"status": "compile_error", "error": f"{type(error).__name__}: {error}"}
+        )
     else:
         record = {"status": "ok"}
     matched, total, mismatches = _leaf_match(reference, spec)
-    record.update(
-        {"leaf_matched": matched, "leaf_total": total, "mismatches": mismatches[:20]}
-    )
+    record.update({"leaf_matched": matched, "leaf_total": total, "mismatches": mismatches[:20]})
     return record
 
 
@@ -154,26 +173,31 @@ async def main() -> None:
     parser.add_argument("--timeout", type=float, default=600)
     parser.add_argument("--limit", type=int)
     parser.add_argument(
-        "--relaxed-schema", action="store_true",
+        "--relaxed-schema",
+        action="store_true",
         help="don't force optional keys into `required` (matches SFT target distribution)",
     )
     parser.add_argument(
-        "--strip-empty", action="store_true",
+        "--strip-empty",
+        action="store_true",
         help="drop empty-string values before validation (grammar-forced keys the "
-             "model had no value for)",
+        "model had no value for)",
     )
     parser.add_argument(
-        "--no-response-format", action="store_true",
+        "--no-response-format",
+        action="store_true",
         help="send no response_format at all. Ollama renders the schema into the "
-             "prompt as a tool definition for tool-capable templates, which derails "
-             "a student trained to answer with bare JSON (empty content, prose in "
-             "`reasoning`). The SFT target IS the grammar, so unconstrained is fine.",
+        "prompt as a tool definition for tool-capable templates, which derails "
+        "a student trained to answer with bare JSON (empty content, prose in "
+        "`reasoning`). The SFT target IS the grammar, so unconstrained is fine.",
     )
     args = parser.parse_args()
     if args.no_response_format:
         response_format = None
     else:
-        response_format = _RELAXED_RESPONSE_FORMAT if args.relaxed_schema else _RECIPE_RESPONSE_FORMAT
+        response_format = (
+            _RELAXED_RESPONSE_FORMAT if args.relaxed_schema else _RECIPE_RESPONSE_FORMAT
+        )
 
     examples = [
         json.loads(line)
@@ -205,9 +229,7 @@ async def main() -> None:
                 sink.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(f"[{index}] {record['status']}", record.get("error", ""), flush=True)
 
-    await asyncio.gather(
-        *(worker(i, ex) for i, ex in enumerate(examples) if i not in done)
-    )
+    await asyncio.gather(*(worker(i, ex) for i, ex in enumerate(examples) if i not in done))
 
     results = [
         json.loads(line)
