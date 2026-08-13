@@ -98,9 +98,7 @@ def _has_mash_info(row: dict) -> bool:
     return bool(re.search(r"(?is)mash(?! thickness)[^|]{0,60}?\d", _source_en(row)))
 
 
-def _select(
-    pairs: list[tuple[int, dict]], count: int, seed: int | None
-) -> list[tuple[int, dict]]:
+def _select(pairs: list[tuple[int, dict]], count: int, seed: int | None) -> list[tuple[int, dict]]:
     """First `count` (index, row) pairs in corpus order, so --count N is a prefix and
     larger counts are supersets. With --shuffle SEED, pairs are shuffled by seed first:
     same seed stays nested and resumable, a different seed draws a different subset."""
@@ -176,8 +174,10 @@ async def main() -> None:
     ]
     skipped = len(selected) - len(pending)
     if skipped:
-        no_mash = 0 if args.indices else sum(
-            1 for index, row in selected if index not in ready and not _has_mash_info(row)
+        no_mash = (
+            0
+            if args.indices
+            else sum(1 for index, row in selected if index not in ready and not _has_mash_info(row))
         )
         print(
             f"resuming: {skipped - no_mash}/{len(selected)} already ready, "

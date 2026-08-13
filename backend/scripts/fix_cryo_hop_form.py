@@ -47,9 +47,9 @@ def main() -> None:
         for record in records:
             if record.get("status") not in _READY:
                 continue
-            hops = (
-                ((record.get("spec") or {}).get("recipe") or {}).get("ingredients") or {}
-            ).get("hop_additions") or []
+            hops = (((record.get("spec") or {}).get("recipe") or {}).get("ingredients") or {}).get(
+                "hop_additions"
+            ) or []
             touched = False
             for hop in hops:
                 if not _CRYO.search(hop.get("name") or ""):

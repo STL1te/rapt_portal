@@ -23,9 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH is unset
 
+from evaluate_recipe_wizard import _READY, _load_results, _source
 from pydantic import ValidationError
 
-from evaluate_recipe_wizard import _READY, _load_results, _source
 from features.ai.recipe_wizard import SubmitRecipe
 
 DEFAULT_SYSTEM = Path(__file__).parents[1] / "prompts" / "recipe_wizard.md"
@@ -63,20 +63,30 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "pairs", type=Path, nargs="+", metavar="RESULTS CORPUS",
+        "pairs",
+        type=Path,
+        nargs="+",
+        metavar="RESULTS CORPUS",
         help="alternating results.jsonl / corpus.jsonl paths",
     )
-    parser.add_argument("--system", type=Path, default=DEFAULT_SYSTEM,
-                        help="system prompt file fed during distillation")
+    parser.add_argument(
+        "--system",
+        type=Path,
+        default=DEFAULT_SYSTEM,
+        help="system prompt file fed during distillation",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--val-fraction", type=float, default=0.05)
     parser.add_argument("--test-fraction", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
-        "--frozen", type=Path, nargs="*", default=[],
+        "--frozen",
+        type=Path,
+        nargs="*",
+        default=[],
         help="existing split files (val/test) kept verbatim: their examples are excluded "
-             "from train by spec match and the files are copied into --output-dir, so "
-             "metrics stay comparable across model iterations",
+        "from train by spec match and the files are copied into --output-dir, so "
+        "metrics stay comparable across model iterations",
     )
     args = parser.parse_args()
     if len(args.pairs) % 2:
@@ -137,22 +147,24 @@ def main() -> None:
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
-            entries.append((
-                (corpus_path.name, index),
-                compact,
-                {
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        # freeform_rewrite.py rows carry the hand-typed rewrite as the
-                        # user turn; plain distillation rows rebuild it from the corpus
-                        {
-                            "role": "user",
-                            "content": (result.get("rewrite") or _source(row)).strip(),
-                        },
-                        {"role": "assistant", "content": target},
-                    ]
-                },
-            ))
+            entries.append(
+                (
+                    (corpus_path.name, index),
+                    compact,
+                    {
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            # freeform_rewrite.py rows carry the hand-typed rewrite as the
+                            # user turn; plain distillation rows rebuild it from the corpus
+                            {
+                                "role": "user",
+                                "content": (result.get("rewrite") or _source(row)).strip(),
+                            },
+                            {"role": "assistant", "content": target},
+                        ]
+                    },
+                )
+            )
             ready += 1
         print(f"{results_path.name}: {ready} examples, {invalid} stale-schema skips")
 

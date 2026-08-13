@@ -43,6 +43,7 @@ _QTY = re.compile(
     re.I,
 )
 
+
 def _source_text(row: dict) -> str:
     if "BrewMethod" in row:  # Brewer's Friend: yeast lives in instructions/notes
         parts = [row.get("Name") or ""]
@@ -94,9 +95,9 @@ def main() -> None:
     for record in records:
         if record.get("status") not in _READY:
             continue
-        cultures = (
-            ((record.get("spec") or {}).get("recipe") or {}).get("ingredients") or {}
-        ).get("culture_additions") or []
+        cultures = (((record.get("spec") or {}).get("recipe") or {}).get("ingredients") or {}).get(
+            "culture_additions"
+        ) or []
         if not cultures:
             continue
         source = _source_text(rows[record["index"]])
@@ -126,8 +127,10 @@ def main() -> None:
             touched_rows += 1
             SubmitRecipe.model_validate(record["spec"])  # must still validate
 
-    print(f"{args.results.name}: stripped={stripped} in {touched_rows} rows | "
-          f"kept because mass/volume={kept_mass}, kept because quantity stated={kept_stated}")
+    print(
+        f"{args.results.name}: stripped={stripped} in {touched_rows} rows | "
+        f"kept because mass/volume={kept_mass}, kept because quantity stated={kept_stated}"
+    )
     for line in samples:
         print(line)
     if args.apply:

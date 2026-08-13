@@ -25,16 +25,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH is unset
 
-# Progress lines carry validator errors quoting ingredient names, so a Windows console
-# in cp1251 kills an hour-long run with UnicodeEncodeError at a random row.
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
+from evaluate_recipe_wizard import _READY, _load_results, _meta, _source
 from pydantic import ValidationError
 
 from core.config import _llm
-from evaluate_recipe_wizard import _READY, _load_results, _meta, _source
 from features.ai.recipe_wizard import SubmitRecipe, _semantic_recipe_errors
 from features.ai.services import _run_chat_completion
+
+# Progress lines carry validator errors quoting ingredient names, so a Windows console
+# in cp1251 kills an hour-long run with UnicodeEncodeError at a random row.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # Rewriter endpoint: REWRITER_LLM_* env vars, falling back to the shared LLM_* block
 # in backend/.env (so the key stays out of run_freeform.cmd). The semantic judge is
@@ -65,16 +65,24 @@ _STYLES = (
 _PARTIAL_CUTS = (
     # "boil" carries the whole boil object, whirlpool boil_steps included, so the draft
     # must narrate the stand too - otherwise the gate reports the spec's whirlpool as lost.
-    ("the mash rests (temperatures/durations), the boil time and the whirlpool/hopstand "
-     "when the recipe has one (its stand temperature and/or duration), with no ingredients "
-     "at all — no grain bill, no hops, no additions", ("mash", "boil")),
-    ("the recipe name and the ingredients — every ingredient in the recipe, including "
-     "priming sugar and anything added during fermentation or at packaging, but no "
-     "process details", ("name", "ingredients")),
-    ("the mash rests, the boil time, the whirlpool/hopstand when the recipe has one (its "
-     "stand temperature and/or duration) and the hop additions with their timings — hops "
-     "only, no grain bill and no non-hop additions (no finings, spices or flavourings)",
-     ("mash", "boil", "hops")),
+    (
+        "the mash rests (temperatures/durations), the boil time and the whirlpool/hopstand "
+        "when the recipe has one (its stand temperature and/or duration), with no ingredients "
+        "at all — no grain bill, no hops, no additions",
+        ("mash", "boil"),
+    ),
+    (
+        "the recipe name and the ingredients — every ingredient in the recipe, including "
+        "priming sugar and anything added during fermentation or at packaging, but no "
+        "process details",
+        ("name", "ingredients"),
+    ),
+    (
+        "the mash rests, the boil time, the whirlpool/hopstand when the recipe has one (its "
+        "stand temperature and/or duration) and the hop additions with their timings — hops "
+        "only, no grain bill and no non-hop additions (no finings, spices or flavourings)",
+        ("mash", "boil", "hops"),
+    ),
 )
 
 
@@ -146,9 +154,7 @@ def _cosmetic(error: str) -> bool:
     return normalized[0] == normalized[1]
 
 
-async def _rewrite_one(
-    index: int, row: dict, spec: dict, style: str, sections: str | None
-) -> dict:
+async def _rewrite_one(index: int, row: dict, spec: dict, style: str, sections: str | None) -> dict:
     source = _source(row).strip()
     partial_rule = _PARTIAL_RULE.format(sections=sections) if sections else ""
     rewrite = await _run_chat_completion(
@@ -188,14 +194,20 @@ async def main() -> None:
     parser.add_argument("results", type=Path, help="distillation results jsonl")
     parser.add_argument("corpus", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--exclude", type=Path, nargs="*", default=[],
-                        help="frozen split files (val/test) whose recipes must not be rewritten")
+    parser.add_argument(
+        "--exclude",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="frozen split files (val/test) whose recipes must not be rewritten",
+    )
     parser.add_argument("--count", type=int, default=50)
     parser.add_argument("--concurrency", type=int, default=10)
     parser.add_argument(
-        "--partial", action="store_true",
+        "--partial",
+        action="store_true",
         help="produce partial drafts (mash-only, ingredients-only, ...) with the spec "
-             "cut to match; use a separate output file from the full-rewrite run",
+        "cut to match; use a separate output file from the full-rewrite run",
     )
     args = parser.parse_args()
 
@@ -206,9 +218,7 @@ async def main() -> None:
     ]
     excluded = _excluded_specs(args.exclude)
     done = {
-        index
-        for index, record in _load_results(args.output).items()
-        if record["status"] == "ok"
+        index for index, record in _load_results(args.output).items() if record["status"] == "ok"
     }
 
     candidates = []

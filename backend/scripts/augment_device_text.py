@@ -219,7 +219,7 @@ def generate(args: argparse.Namespace) -> None:
 
     rng = random.Random(args.seed)
     selected, skipped = [], 0
-    for index, row in pairs[args.offset:]:
+    for index, row in pairs[args.offset :]:
         if len(selected) >= args.count:
             break
         if _rest_count(_source(row), lang) < args.min_rests:
@@ -231,13 +231,15 @@ def generate(args: argparse.Namespace) -> None:
     for index, row in selected:
         paragraph, expected = build_paragraph(rng, lang)
         out_rows.append(_augment_row(row, paragraph))
-        sidecar.append({
-            "out_index": len(out_rows) - 1,  # index inside OUT_CORPUS, what the runner keys on
-            "source_index": index,
-            "name": row.get("name", row.get("Name")),
-            "paragraph": paragraph,
-            "expected": expected,
-        })
+        sidecar.append(
+            {
+                "out_index": len(out_rows) - 1,  # index inside OUT_CORPUS, what the runner keys on
+                "source_index": index,
+                "name": row.get("name", row.get("Name")),
+                "paragraph": paragraph,
+                "expected": expected,
+            }
+        )
 
     args.out_corpus.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in out_rows),
@@ -251,8 +253,10 @@ def generate(args: argparse.Namespace) -> None:
     for entry in sidecar:
         for field in entry["expected"]:
             counts[field] = counts.get(field, 0) + 1
-    print(f"{len(out_rows)} recipes written ({skipped} skipped: fewer than "
-          f"{args.min_rests} rests), lang={lang}")
+    print(
+        f"{len(out_rows)} recipes written ({skipped} skipped: fewer than "
+        f"{args.min_rests} rests), lang={lang}"
+    )
     for field, count in sorted(counts.items(), key=lambda kv: -kv[1]):
         print(f"  {field:24} {count:5} ({count / max(len(out_rows), 1):.0%})")
 
@@ -285,14 +289,14 @@ def check(args: argparse.Namespace) -> None:
             if not ok:
                 row_ok = False
                 if len(misses) < 15:
-                    misses.append(
-                        f"  index={index} {field}: want {want!r}, got {got!r}"
-                    )
+                    misses.append(f"  index={index} {field}: want {want!r}, got {got!r}")
         perfect += row_ok
     if not scored:
         raise SystemExit("no scored rows: results and sidecar do not overlap")
-    print(f"scored {scored} recipes, all stated fields correct in {perfect} "
-          f"({perfect / scored:.0%}) — gate is 95%")
+    print(
+        f"scored {scored} recipes, all stated fields correct in {perfect} "
+        f"({perfect / scored:.0%}) — gate is 95%"
+    )
     for field, (hits, total) in sorted(per_field.items(), key=lambda kv: -kv[1][1]):
         print(f"  {field:24} {hits:5}/{total:<5} {hits / total:5.0%}")
     if misses:
@@ -302,9 +306,7 @@ def check(args: argparse.Namespace) -> None:
 
 _POWER_MARKER = re.compile(r"%|процент|мощност|power", re.IGNORECASE)
 _PID_MARKER = re.compile(r"\bПИД\b|\bPID\b", re.IGNORECASE)
-_ALERT_MARKER = re.compile(
-    r"предупрежд|уведом|сигнал|оповещ|alert|notif", re.IGNORECASE
-)
+_ALERT_MARKER = re.compile(r"предупрежд|уведом|сигнал|оповещ|alert|notif", re.IGNORECASE)
 
 
 def _rewrite_keeps(field: str, want, rewrite: str) -> bool:
@@ -312,9 +314,7 @@ def _rewrite_keeps(field: str, want, rewrite: str) -> bool:
     if field in ("heat_power_pct", "rest_power_pct"):
         # Number alone is not enough (a boil time of 90 min would pass), and a marker
         # alone is not enough (the other power's mention would pass): require both.
-        return bool(re.search(rf"\b{int(want)}\b", rewrite)) and bool(
-            _POWER_MARKER.search(rewrite)
-        )
+        return bool(re.search(rf"\b{int(want)}\b", rewrite)) and bool(_POWER_MARKER.search(rewrite))
     if field == "mash_pid_enabled":
         return bool(_PID_MARKER.search(rewrite))
     return bool(_ALERT_MARKER.search(rewrite))
@@ -356,8 +356,10 @@ def check_rewrites(args: argparse.Namespace) -> None:
                 lost.append(field)
         (dropped if lost else kept).append((row, lost))
 
-    print(f"scored {scored} rewrites: {len(kept)} keep every stated setting, "
-          f"{len(dropped)} lost at least one")
+    print(
+        f"scored {scored} rewrites: {len(kept)} keep every stated setting, "
+        f"{len(dropped)} lost at least one"
+    )
     for field, (hits, total) in sorted(per_field.items(), key=lambda kv: -kv[1][1]):
         print(f"  {field:24} {hits:5}/{total:<5} {hits / max(total, 1):5.0%}")
     for row, lost in dropped[:10]:
@@ -383,14 +385,20 @@ def selftest() -> None:
                     stated = f"{int(expected[field])}"
                     assert stated in paragraph, f"{field}={stated} missing from {paragraph!r}"
             if expected.get("mash_pid_enabled") is False:
-                assert re.search(r"не использовать|без ПИД|отключить|not use|off",
-                                 paragraph), paragraph
+                assert re.search(r"не использовать|без ПИД|отключить|not use|off", paragraph), (
+                    paragraph
+                )
             heat, rest = expected.get("heat_power_pct"), expected.get("rest_power_pct")
             if heat is not None and rest is not None:
                 assert rest <= heat, f"rest {rest} above heat {heat}"
     # A row must carry the paragraph into what the teacher actually reads.
-    row = {"name": "x", "style_full": "s", "type": "Зерновой", "volume": "20",
-           "full_description": "Паузы: 63°C - 30 мин"}
+    row = {
+        "name": "x",
+        "style_full": "s",
+        "type": "Зерновой",
+        "volume": "20",
+        "full_description": "Паузы: 63°C - 30 мин",
+    }
     assert "МАРКЕР" in _source(_augment_row(row, "МАРКЕР"))
 
     # The rewrite guard must fail exactly when the device wording is gone.
@@ -411,17 +419,25 @@ def main() -> None:
     parser.add_argument("corpus", type=Path, nargs="?")
     parser.add_argument("out_corpus", type=Path, nargs="?")
     parser.add_argument("sidecar", type=Path, nargs="?")
-    parser.add_argument("--shuffle", type=int, metavar="SEED",
-                        help="same seed as the plain distillation run")
-    parser.add_argument("--offset", type=int, default=0,
-                        help="skip this many selected recipes: set it to the plain run's "
-                             "--count so the two never share a recipe")
+    parser.add_argument(
+        "--shuffle", type=int, metavar="SEED", help="same seed as the plain distillation run"
+    )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="skip this many selected recipes: set it to the plain run's "
+        "--count so the two never share a recipe",
+    )
     parser.add_argument("--count", type=int, default=400)
     parser.add_argument("--min-rests", type=int, default=3)
     parser.add_argument("--seed", type=int, default=7, help="device paragraph randomness")
     parser.add_argument("--check", nargs=2, metavar=("RESULTS", "SIDECAR"), type=Path)
     parser.add_argument(
-        "--check-rewrites", nargs=2, metavar=("FREEFORM_RESULTS", "SIDECAR"), type=Path,
+        "--check-rewrites",
+        nargs=2,
+        metavar=("FREEFORM_RESULTS", "SIDECAR"),
+        type=Path,
         help="the freeform gate cannot see a dropped device paragraph; this can",
     )
     parser.add_argument("--out", type=Path, help="with --check-rewrites: write the clean rows")

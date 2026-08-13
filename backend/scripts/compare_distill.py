@@ -65,7 +65,7 @@ def main() -> None:
     print("top diverging paths:")
     for path, count in sorted(worst.items(), key=lambda item: -item[1])[:15]:
         print(f"  {count:3d}  {path}")
-    print(f"lowest-agreement rows:")
+    print("lowest-agreement rows:")
     for rate, index, mismatches in scored[: args.worst]:
         print(f"  index={index} {rate:.0%}  {', '.join(mismatches[:6])}")
 
