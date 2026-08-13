@@ -3,7 +3,7 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
 from core import sync
@@ -15,6 +15,8 @@ from .portal_sync import portal_data_sync
 
 TERMINAL_STATUSES = {"done", "failed"}
 ACTIVE_STATUSES = {"queued", "running"}
+# The interval sync writes a row a minute; older finished ones are noise.
+JOB_RETENTION = timedelta(days=3)
 
 _start_locks = {
     "base_sync": asyncio.Lock(),
@@ -87,6 +89,22 @@ def list_job_history(page: int, page_size: int) -> dict[str, Any]:
             "page_size": page_size,
             "total": total,
         }
+
+
+def prune_old_jobs() -> int:
+    """Drop finished jobs past the retention window. Active ones stay: a job still
+    running after three days is a hang worth seeing."""
+    with SessionLocal() as db:
+        deleted = (
+            db.query(SystemJob)
+            .filter(
+                SystemJob.status.in_(TERMINAL_STATUSES),
+                SystemJob.created_at < _utcnow() - JOB_RETENTION,
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return deleted
 
 
 def finalize_stale_jobs() -> int:
@@ -221,3 +239,5 @@ async def _run_job(
         job.result_json = json.dumps(result, ensure_ascii=False) if result is not None else None
         job.error = error
         db.commit()
+
+    prune_old_jobs()
