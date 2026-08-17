@@ -21,6 +21,7 @@ Usage (from backend/). Outputs belong in data/sft/eval/, not next to the dataset
 import argparse
 import asyncio
 import json
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -222,7 +223,9 @@ async def main() -> None:
             if line.strip()
         }
 
-    client = AsyncOpenAI(base_url=args.base_url, api_key="not-needed")
+    client = AsyncOpenAI(
+        base_url=args.base_url, api_key=os.getenv("OPENAI_API_KEY", "not-needed")
+    )
     semaphore = asyncio.Semaphore(args.concurrency)
     lock = asyncio.Lock()
 
