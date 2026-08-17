@@ -35,6 +35,7 @@ from features.ai.recipe_wizard import (
     WIZARD_LLM,
     SubmitRecipe,
     _parse_semantic_validation,
+    _recipe_wizard_messages,
     _response_format_fallbacks,
     _run_semantic_validator,
     _strip_empty_strings,
@@ -48,6 +49,7 @@ from features.ai.services import (
     _localized_default_question,
     _new_llm_client,
     _sample,
+    merge_adjacent_roles,
     open_conversation,
     reset_conversation,
     send_conversation_message,
@@ -316,6 +318,37 @@ def test_strip_empty_strings_drops_grammar_placeholders():
         "hops": [{"name": "Magnum"}],
         "amount": {"unit": "g", "value": 0},
     }
+
+
+def test_recipe_wizard_messages_never_repeat_the_user_role():
+    """The repair pass carries a correction. Appending it as a second user turn is a 500
+    on Mistral-family templates ("roles must alternate"), so it rides the same turn."""
+    messages = _recipe_wizard_messages("Пильзнер, 20 л", "The previous attempt failed: ...")
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert "Пильзнер, 20 л" in messages[-1]["content"]
+    assert "The previous attempt failed" in messages[-1]["content"]
+
+
+def test_merge_adjacent_roles_collapses_repeats_and_keeps_alternation():
+    """Chat history ending on `user` (a turn that died before its answer was stored) must
+    not produce two user turns once the new question is appended."""
+    assert merge_adjacent_roles(
+        [
+            {"role": "system", "content": "s"},
+            {"role": "user", "content": "первый"},
+            {"role": "assistant", "content": "ответ"},
+            {"role": "user", "content": "осиротевший"},
+            {"role": "user", "content": "новый"},
+        ]
+    ) == [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "первый"},
+        {"role": "assistant", "content": "ответ"},
+        {"role": "user", "content": "осиротевший\n\nновый"},
+    ]
+    # Already alternating: unchanged, and the input is not mutated.
+    original = [{"role": "system", "content": "s"}, {"role": "user", "content": "q"}]
+    assert merge_adjacent_roles(original) == original
 
 
 def test_llm_client_retries_transient_failures(monkeypatch):

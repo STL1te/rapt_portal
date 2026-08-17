@@ -13,7 +13,7 @@ from core.config import VALIDATOR_LLM, WIZARD_LLM, LLMConfig
 from .beerjson_models import RecipeModel, to_beerjson_document
 from .brewzilla_compiler import compile_brewzilla_profile
 from .brewzilla_overrides import BrewZillaOverrides, merge_overrides
-from .services import _load_prompt, _run_chat_completion
+from .services import _load_prompt, _run_chat_completion, merge_adjacent_roles
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,7 @@ def _recipe_wizard_messages(description: str, correction: str | None = None) -> 
     ]
     if correction:
         messages.append({"role": "user", "content": correction})
-    return messages
+    return merge_adjacent_roles(messages)
 
 
 def _strip_empty_strings(node):

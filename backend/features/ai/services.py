@@ -374,6 +374,22 @@ def _build_system_block(
     return "\n".join(parts)
 
 
+def merge_adjacent_roles(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Collapse consecutive turns of the same role into one.
+
+    Mistral-family chat templates refuse a message list where a role repeats ("roles must
+    alternate") and answer with a 500; Gemma and Qwen accept it silently, so the defect
+    hides until the model changes. Merging says the same thing in a shape every template
+    takes."""
+    merged: list[dict[str, str]] = []
+    for message in messages:
+        if merged and merged[-1]["role"] == message["role"]:
+            merged[-1]["content"] += f"\n\n{message['content']}"
+        else:
+            merged.append(dict(message))
+    return merged
+
+
 def _build_model_messages(
     system_prompt: str,
     context_tag: str,
@@ -383,16 +399,20 @@ def _build_model_messages(
     user_content: str,
     response_locale: str | None = None,
 ) -> list[dict[str, str]]:
-    return [
-        {
-            "role": "system",
-            "content": _build_system_block(
-                system_prompt, context_tag, context, summary, response_locale
-            ),
-        },
-        *[{"role": message.role, "content": message.content} for message in history],
-        {"role": "user", "content": user_content.strip()},
-    ]
+    # History comes from the database, so a turn that failed after storing the question and
+    # before storing the answer leaves it ending on `user` - right where we append another.
+    return merge_adjacent_roles(
+        [
+            {
+                "role": "system",
+                "content": _build_system_block(
+                    system_prompt, context_tag, context, summary, response_locale
+                ),
+            },
+            *[{"role": message.role, "content": message.content} for message in history],
+            {"role": "user", "content": user_content.strip()},
+        ]
+    )
 
 
 def _search_sessions(kind: AssessmentKind, query: str, current_session_id: str) -> list[dict]:
