@@ -434,7 +434,8 @@ h2:first-child {
   background: var(--border);
 }
 
-.ai-chat-head button,
+.ai-chat-head-actions > button,
+.ai-chat-menu > button,
 .ai-chat-compose button {
   border: 0;
   border-radius: var(--radius-sm);
@@ -444,12 +445,14 @@ h2:first-child {
   font: inherit;
 }
 
-.ai-chat-head button {
+.ai-chat-head-actions > button,
+.ai-chat-menu > button {
   width: 34px;
   height: 34px;
 }
 
-.ai-chat-head button:hover {
+.ai-chat-head-actions > button:hover,
+.ai-chat-menu > button:hover {
   color: var(--text);
   background: var(--bg);
 }
