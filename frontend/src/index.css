@@ -102,44 +102,6 @@ a {
   margin-top: var(--space-lg);
 }
 
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.sidebar-secondary-nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-}
-
-.sidebar-secondary-nav a {
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.sidebar-secondary-nav a:hover {
-  background: var(--panel);
-  color: var(--text);
-}
-
-.sidebar-secondary-nav a.active {
-  background: var(--accent-bg);
-  color: var(--accent);
-}
-
-.sidebar-secondary-nav a i {
-  width: 18px;
-  text-align: center;
-  margin-right: var(--space-xs);
-}
-
 .sidebar nav a {
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
@@ -161,36 +123,69 @@ a {
   margin-right: var(--space-xs);
 }
 .sidebar-close,
-.menu-toggle,
 .sidebar-backdrop {
   display: none;
-}
-
-.theme-toggle {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  font-family: inherit;
-}
-.theme-toggle:hover {
-  color: var(--text);
-  border-color: var(--accent);
 }
 main {
   flex: 1;
   min-width: 0;
   padding: var(--space-lg) var(--space-xl) var(--space-2xl);
 }
-.mobile-topbar {
-  display: none;
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .brand {
+  display: none; /* the sidebar already carries it on desktop */
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+.topbar .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.topbar .icon-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.admin-tabs {
+  margin-bottom: var(--space-lg);
+}
+
+@media (min-width: 901px) {
+  .sidebar.collapsed {
+    width: 64px;
+    padding-inline: var(--space-xs);
+  }
+  .sidebar.collapsed .nav-label {
+    display: none;
+  }
+  .sidebar.collapsed .sidebar-head,
+  .sidebar.collapsed nav a {
+    justify-content: center;
+    text-align: center;
+  }
+  .sidebar.collapsed nav a {
+    padding-inline: 0;
+  }
+  .sidebar.collapsed nav a i,
+  .sidebar.collapsed .brand-icon {
+    margin-right: 0;
+  }
 }
 .brand {
   font-size: var(--text-lg);
@@ -382,7 +377,7 @@ h2:first-child {
   max-width: min(300px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-3xs);
   padding: var(--space-2xs);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -530,7 +525,7 @@ h2:first-child {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .ai-message-body {
@@ -1483,8 +1478,7 @@ th {
     transform: translateX(0);
   }
 
-  .sidebar-close,
-  .menu-toggle {
+  .sidebar-close {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1499,38 +1493,15 @@ th {
     cursor: pointer;
   }
 
-  .sidebar-close:hover,
-  .menu-toggle:hover {
+  .sidebar-close:hover {
     border-color: var(--accent);
   }
 
-  .mobile-topbar {
+  .topbar .brand {
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    justify-content: space-between;
-    margin-bottom: var(--space-lg);
-    padding-bottom: var(--space-md);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .mobile-topbar .brand {
     min-width: 0;
     flex: 1;
     font-size: var(--text-lg);
-  }
-
-  .mobile-topbar .theme-toggle {
-    margin-top: 0;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .mobile-topbar .theme-toggle span {
-    display: none;
   }
 
   main {
@@ -1896,6 +1867,24 @@ th {
 .profile-wizard-title i {
   margin-right: var(--space-xs);
   color: var(--accent);
+}
+
+/* only the height is draggable — width stays pinned to the panel */
+.profile-wizard-panel textarea {
+  resize: vertical;
+}
+
+/* 15 rows at 15px/1.45 plus the field padding */
+@media (min-width: 801px) {
+  .profile-wizard-panel textarea {
+    min-height: 23rem;
+  }
+}
+
+.profile-wizard-count {
+  margin: 0;
+  text-align: right;
+  font-size: var(--text-xs);
 }
 
 .profile-wizard-text {

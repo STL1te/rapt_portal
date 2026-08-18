@@ -209,10 +209,6 @@ export default function SystemSyncs() {
 
   return (
     <>
-      <div className="page-head">
-        <h2>Системные синки</h2>
-      </div>
-
       <section className="panel">
         <label className="field">
           <span>Portal token</span>

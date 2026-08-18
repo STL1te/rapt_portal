@@ -269,8 +269,8 @@ export default function ProfileDetail() {
                             .slice()
                             .sort(byTriggerTime)
                             .map((a, i) => (
-                            <li key={a.id ?? i}>{a.alertText ?? a.trigger ?? '—'}</li>
-                          ))}
+                              <li key={a.id ?? i}>{a.alertText ?? a.trigger ?? '—'}</li>
+                            ))}
                         </ul>
                       ) : (
                         '—'

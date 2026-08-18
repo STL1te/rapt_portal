@@ -12,6 +12,9 @@ const STAGE_LABEL: Record<ProfileGenerationStage, string> = {
   checking_fixed_recipe: 'Повторно сверяем с описанием…',
 }
 
+// 16k context has to hold the description, the generated profile JSON and the repair pass
+const DESCRIPTION_LIMIT = 4000
+
 export default function ProfileWizard() {
   useTitle('AI-мастер профилей')
   const navigate = useNavigate()
@@ -65,11 +68,17 @@ export default function ProfileWizard() {
           <span>Описание варки</span>
           <textarea
             rows={10}
+            maxLength={DESCRIPTION_LIMIT}
             placeholder="Американский pale ale, 23 литра. Одноступенчатое затирание 67 °C 60 минут, mash-out 78 °C 10 минут, кип 60 минут. Алерт на добавление хмеля за 15 минут до конца кипа."
             value={description}
             disabled={loading}
             onChange={(e) => setDescription(e.target.value)}
           />
+          <p
+            className={`profile-wizard-count ${description.length >= DESCRIPTION_LIMIT ? 'error' : 'muted'}`}
+          >
+            {description.length} / {DESCRIPTION_LIMIT}
+          </p>
         </label>
         {loading && stage ? (
           <div className="profile-wizard-progress" role="status" aria-live="polite">

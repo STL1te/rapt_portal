@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import ThemeToggle from '@/components/ThemeToggle'
+import Admin from '@/pages/admin/Admin'
+import SystemSyncs from '@/pages/admin/SystemSyncs'
 import BrewSessionPage from '@/pages/brewzillas/BrewSessionPage'
 import BrewZillaDetail from '@/pages/brewzillas/BrewZillaDetail'
 import Brewzillas from '@/pages/brewzillas/Brewzillas'
@@ -12,7 +14,6 @@ import ProfileDetail from '@/pages/profiles/ProfileDetail'
 import ProfileEditor from '@/pages/profiles/ProfileEditor'
 import Profiles from '@/pages/profiles/Profiles'
 import ProfileWizard from '@/pages/profiles/ProfileWizard'
-import SystemSyncs from '@/pages/SystemSyncs'
 import YeastDetail from '@/pages/yeasts/YeastDetail'
 import Yeasts from '@/pages/yeasts/Yeasts'
 
@@ -24,13 +25,12 @@ const primaryNavItems = [
   { to: '/yeasts', label: 'Дрожжи', icon: 'fa-solid fa-vial', end: false },
 ] as const
 
-const secondaryNavItems = [
-  { to: '/system-syncs', label: 'Системные синки', icon: 'fa-solid fa-gear' },
-] as const
+const isMobile = () => window.matchMedia('(max-width: 900px)').matches
 
 export default function App() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar') === 'collapsed')
 
   useEffect(() => {
     setSidebarOpen(false)
@@ -40,6 +40,10 @@ export default function App() {
     document.body.classList.toggle('menu-open', sidebarOpen)
     return () => document.body.classList.remove('menu-open')
   }, [sidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'expanded')
+  }, [collapsed])
 
   return (
     <div className="layout">
@@ -51,10 +55,11 @@ export default function App() {
         onClick={() => setSidebarOpen(false)}
       />
 
-      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-head">
           <div className="brand">
-            <img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal
+            <img src="/favicon.png" className="brand-icon" alt="" />
+            <span className="nav-label">RAPT Portal</span>
           </div>
           <button
             type="button"
@@ -68,38 +73,32 @@ export default function App() {
 
         <nav>
           {primaryNavItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end}>
-              <i className={item.icon} /> {item.label}
+            <NavLink key={item.to} to={item.to} end={item.end} title={item.label}>
+              <i className={item.icon} /> <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
-
-        <div className="sidebar-footer">
-          <nav className="sidebar-secondary-nav">
-            {secondaryNavItems.map((item) => (
-              <NavLink key={item.to} to={item.to}>
-                <i className={item.icon} /> {item.label}
-              </NavLink>
-            ))}
-          </nav>
-          <ThemeToggle />
-        </div>
       </aside>
       <main>
-        <header className="mobile-topbar">
+        <header className="topbar">
           <button
             type="button"
-            className="menu-toggle"
-            aria-label="Открыть меню"
+            className="icon-btn"
+            aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
             aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => (isMobile() ? setSidebarOpen((v) => !v) : setCollapsed((v) => !v))}
           >
             <i className="fa-solid fa-bars" />
           </button>
           <div className="brand">
             <img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal
           </div>
-          <ThemeToggle />
+          <div className="topbar-actions">
+            <NavLink to="/admin" className="icon-btn" title="Администрирование">
+              <i className="fa-solid fa-gear" />
+            </NavLink>
+            <ThemeToggle />
+          </div>
         </header>
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -116,7 +115,11 @@ export default function App() {
           <Route path="/profiles/:id/edit" element={<ProfileEditor />} />
           <Route path="/yeasts" element={<Yeasts />} />
           <Route path="/yeasts/:id" element={<YeastDetail />} />
-          <Route path="/system-syncs" element={<SystemSyncs />} />
+          <Route path="/admin" element={<Admin />}>
+            <Route index element={<Navigate to="syncs" replace />} />
+            <Route path="syncs" element={<SystemSyncs />} />
+          </Route>
+          <Route path="/system-syncs" element={<Navigate to="/admin/syncs" replace />} />
         </Routes>
       </main>
     </div>
