@@ -13,7 +13,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { HydrometerTelemetryPoint } from '@/api'
-import { grav, temp } from '@/lib/fmt'
+import { grav, parseUtc, temp } from '@/lib/fmt'
 
 type RangePreset = '24h' | '3d' | '7d' | 'all'
 
@@ -24,10 +24,6 @@ const RANGE_MS: Record<'24h' | '3d' | '7d', number> = {
 }
 
 const PRESETS: RangePreset[] = ['24h', '3d', '7d', 'all']
-
-function parseUtc(value: string) {
-  return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
-}
 
 export default function HydrometerChart({ data }: { data: HydrometerTelemetryPoint[] }) {
   const [hidden, setHidden] = useState<Record<string, boolean>>({})

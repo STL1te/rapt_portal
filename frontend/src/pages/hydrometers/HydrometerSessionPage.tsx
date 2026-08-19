@@ -5,12 +5,8 @@ import { getHydrometerSession, getHydrometerTelemetry } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import HydrometerChart from '@/components/HydrometerChart'
 import MetricCard from '@/components/MetricCard'
-import { brix, date, duration, grav, sg } from '@/lib/fmt'
+import { brix, date, dateTime, duration, grav, parseUtc, sg } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
-
-function parseUtc(value: string) {
-  return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
-}
 
 export default function HydrometerSessionPage() {
   const { id } = useParams<{ id: string }>()
@@ -51,20 +47,26 @@ export default function HydrometerSessionPage() {
   const latestTime = latest?.timestamp ? parseUtc(latest.timestamp) : null
   const latestTelemetryLabel =
     latestTime == null ? 'нет данных' : new Date(latestTime).toLocaleString()
-  const startTelemetryLabel =
-    s.start_date == null ? 'нет данных' : new Date(parseUtc(s.start_date)).toLocaleString()
+  const startTelemetryLabel = dateTime(s.start_date)
+  const isStale = latestTime == null || Date.now() - latestTime > 6 * 60 * 60 * 1000
+  const gravityPoints = (telemetry ?? []).filter((point) => point.gravity != null)
+  // точка ~сутки назад; для сессии моложе суток — самая ранняя, скорость приводим к 24ч
   const point24h =
     latestTime == null
       ? null
-      : ([...(telemetry ?? [])]
+      : ([...gravityPoints]
           .reverse()
-          .find(
-            (point) =>
-              point.gravity != null &&
-              parseUtc(point.timestamp) <= latestTime - 24 * 60 * 60 * 1000,
-          ) ?? null)
+          .find((point) => parseUtc(point.timestamp) <= latestTime - 24 * 60 * 60 * 1000) ??
+        gravityPoints[0] ??
+        null)
+  const dropHours =
+    point24h == null || latestTime == null
+      ? null
+      : (latestTime - parseUtc(point24h.timestamp)) / (60 * 60 * 1000)
   const gravityDrop24h =
-    latestGravity != null && point24h?.gravity != null ? point24h.gravity - latestGravity : null
+    latestGravity != null && point24h?.gravity != null && dropHours != null && dropHours >= 3
+      ? ((point24h.gravity - latestGravity) * 24) / dropHours
+      : null
   const gravityDrop24hLabel = gravityDrop24h == null ? null : grav(gravityDrop24h)
   const referenceFg = s.target_final_gravity ?? s.final_gravity
   const gravityToFg =
@@ -72,35 +74,50 @@ export default function HydrometerSessionPage() {
 
   const status = !s.active
     ? { tone: 'done', title: 'Сессия завершена', body: 'Финальные показатели уже зафиксированы.' }
-    : gravityDrop24h != null && gravityDrop24h >= 8
+    : isStale
       ? {
-          tone: 'active',
-          title: 'Активное брожение',
-          body: `Плотность упала на ${grav(gravityDrop24h)} за последние 24 часа.`,
+          tone: 'quiet',
+          title: 'Нет свежих данных',
+          body:
+            latestTime == null
+              ? 'Телеметрия ещё не приходила.'
+              : `Последняя точка ${latestTelemetryLabel} — проверь прибор.`,
         }
-      : gravityToFg != null && gravityToFg <= 0
+      : gravityDrop24h != null && gravityDrop24h >= 8
         ? {
-            tone: 'done',
-            title: 'Финиш достигнут',
-            body: 'Текущая плотность уже ниже или равна расчётной цели.',
+            tone: 'active',
+            title: 'Активное брожение',
+            body: `Плотность упала на ${grav(gravityDrop24h)} за последние 24 часа.`,
           }
-        : gravityToFg != null && gravityToFg <= 2
+        : gravityToFg != null && gravityToFg <= 0
           ? {
               tone: 'done',
-              title: 'Почти финиш',
-              body: 'Текущая плотность уже очень близка к расчётному FG.',
+              title: 'Финиш достигнут',
+              body: 'Текущая плотность уже ниже или равна расчётной цели.',
             }
-          : gravityDrop24h != null && gravityDrop24h >= 2
+          : gravityToFg != null && gravityToFg <= 2
             ? {
-                tone: 'steady',
-                title: 'Брожение замедлилось',
-                body: 'Изменения ещё есть, но пик активности уже прошёл.',
+                tone: 'done',
+                title: 'Почти финиш',
+                body: 'Текущая плотность уже очень близка к расчётному FG.',
               }
-            : {
-                tone: 'quiet',
-                title: 'Мало движения',
-                body: 'За последние сутки изменение небольшое. Проверь температуру и последние точки.',
-              }
+            : gravityDrop24h != null && gravityDrop24h >= 2
+              ? {
+                  tone: 'steady',
+                  title: 'Брожение замедлилось',
+                  body: 'Изменения ещё есть, но пик активности уже прошёл.',
+                }
+              : gravityDrop24h == null
+                ? {
+                    tone: 'quiet',
+                    title: 'Данных пока мало',
+                    body: 'Скорость брожения будет видна через несколько часов измерений.',
+                  }
+                : {
+                    tone: 'quiet',
+                    title: 'Мало движения',
+                    body: 'За последние сутки изменение небольшое. Проверь температуру и последние точки.',
+                  }
 
   const density = (n: number | null) => `${sg(n)} SG · ${brix(n)}°Bx`
   const fgLabel = s.target_final_gravity == null ? 'Оценочный FG' : 'FG по дрожжам'
@@ -237,7 +254,7 @@ export default function HydrometerSessionPage() {
           sub={
             tempRange == null
               ? latest?.timestamp
-                ? `обновлено ${new Date(parseUtc(latest.timestamp)).toLocaleString()}`
+                ? `обновлено ${dateTime(latest.timestamp)}`
                 : undefined
               : `диапазон дрожжей ${tempRange}`
           }

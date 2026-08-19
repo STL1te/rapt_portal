@@ -13,7 +13,7 @@ import {
   Brush,
   ResponsiveContainer,
 } from 'recharts'
-import { temp } from '@/lib/fmt'
+import { parseUtc, temp } from '@/lib/fmt'
 import { getBrewTelemetry, type BrewSession } from '@/api'
 
 type RangePreset = '24h' | '3d' | '7d' | 'all'
@@ -25,10 +25,6 @@ const RANGE_MS: Record<'24h' | '3d' | '7d', number> = {
 }
 
 const PRESETS: RangePreset[] = ['24h', '3d', '7d', 'all']
-
-function parseUtc(value: string) {
-  return new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime()
-}
 
 export default function BrewChart({
   sessionId,

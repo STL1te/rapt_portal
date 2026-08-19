@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { openAiConversation, resetAiConversation, sendAiMessage } from '@/api'
+import { parseUtc } from '@/lib/fmt'
 import type { AiConversation, AiMessage, AiSubjectType } from '@/types'
 
 type Props = {
@@ -29,7 +30,7 @@ const messageTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
 })
 
 function formatMessageTime(iso: string): string {
-  return messageTimeFormatter.format(new Date(iso))
+  return messageTimeFormatter.format(new Date(parseUtc(iso)))
 }
 
 export default function AiAssistant({ open, onClose, subjectType, subjectId }: Props) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { dateTime } from '@/lib/fmt'
 import {
   getActiveSystemJobs,
   getSystemJobHistory,
@@ -67,10 +68,6 @@ function describeJob(job: SystemJob | null): { text: string | null; tone: 'muted
 
 function isActive(job: SystemJob | null | undefined): boolean {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'))
-}
-
-function formatStamp(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '—'
 }
 
 function describeKind(kind: string): string {
@@ -299,8 +296,8 @@ export default function SystemSyncs() {
                     <td data-label="Статус">
                       <span className={statusBadgeClass(job.status)}>{job.status}</span>
                     </td>
-                    <td data-label="Создана">{formatStamp(job.created_at)}</td>
-                    <td data-label="Завершена">{formatStamp(job.finished_at)}</td>
+                    <td data-label="Создана">{dateTime(job.created_at)}</td>
+                    <td data-label="Завершена">{dateTime(job.finished_at)}</td>
                     <td data-label="Результат">
                       <div className="job-result">{formatJobResult(job)}</div>
                     </td>

@@ -5,7 +5,7 @@ import { getBrewSession } from '@/api'
 import AiAssistant from '@/components/AiAssistant'
 import BrewChart from '@/components/BrewChart'
 import MetricCard from '@/components/MetricCard'
-import { temp, date, durationHm, stepLen, pct } from '@/lib/fmt'
+import { temp, date, dateTime, durationHm, stepLen, pct } from '@/lib/fmt'
 import { useTitle } from '@/hooks/useTitle'
 
 function fmtDelta(value: number | null) {
@@ -177,11 +177,7 @@ export default function BrewSessionPage() {
         <MetricCard
           label="Отклонение котла"
           value={fmtDelta(delta)}
-          sub={
-            s.last_telemetry_at
-              ? `обновлено ${new Date(s.last_telemetry_at).toLocaleString()}`
-              : 'нет telemetry'
-          }
+          sub={s.last_telemetry_at ? `обновлено ${dateTime(s.last_telemetry_at)}` : 'нет telemetry'}
           icon="fa-solid fa-bullseye"
           tone={tempTone}
         />
