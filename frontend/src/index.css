@@ -142,7 +142,7 @@ a {
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2xs);
+  gap: var(--space-sm);
 }
 .sidebar-foot nav {
   margin-top: 0;
