@@ -41,6 +41,9 @@
   --space-xl: 32px;
   --space-2xl: 48px;
 
+  /* Height of the top bar and the sidebar head — they share one line. */
+  --bar-h: 56px;
+
   /* Radius scale — the only source of border-radius. */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -77,9 +80,12 @@ a {
   min-height: 100vh;
 }
 .sidebar {
+  /* inner padding as a var so the head rule can bleed out to the rail edges */
+  --rail-pad: var(--space-md);
+
   width: 220px;
   flex-shrink: 0;
-  padding: var(--space-lg) var(--space-md);
+  padding: 0 var(--rail-pad) var(--space-lg);
   border-right: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -94,6 +100,10 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
+  height: var(--bar-h);
+  margin-inline: calc(var(--rail-pad) * -1);
+  padding-inline: var(--rail-pad);
+  border-bottom: 1px solid var(--border);
 }
 .sidebar nav {
   display: flex;
@@ -131,9 +141,14 @@ a {
   padding-top: var(--space-md);
   border-top: 1px solid var(--border);
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+.sidebar-foot nav {
+  margin-top: 0;
 }
 .sidebar-collapse {
+  align-self: flex-end;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -143,16 +158,20 @@ a {
   flex-shrink: 0;
 }
 main {
+  --main-pad: var(--space-xl);
+
   flex: 1;
   min-width: 0;
-  padding: var(--space-lg) var(--space-xl) var(--space-2xl);
+  padding: 0 var(--main-pad) var(--space-2xl);
 }
 .topbar {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  height: var(--bar-h);
+  margin-inline: calc(var(--main-pad) * -1);
   margin-bottom: var(--space-lg);
-  padding-bottom: var(--space-md);
+  padding-inline: var(--main-pad);
   border-bottom: 1px solid var(--border);
 }
 .topbar .brand {
@@ -186,12 +205,13 @@ main {
   .topbar .topbar-menu {
     display: none;
   }
-  .sidebar.collapsed .sidebar-foot {
-    justify-content: center;
+  .sidebar.collapsed .sidebar-collapse {
+    align-self: center;
   }
   .sidebar.collapsed {
+    --rail-pad: var(--space-xs);
+
     width: 64px;
-    padding-inline: var(--space-xs);
   }
   .sidebar.collapsed .nav-label {
     display: none;
@@ -1500,7 +1520,7 @@ th {
     transform: translateX(0);
   }
 
-  .sidebar-foot {
+  .sidebar-collapse {
     display: none;
   }
 
@@ -1531,7 +1551,7 @@ th {
   }
 
   main {
-    padding: var(--space-md) var(--space-md) var(--space-2xl);
+    --main-pad: var(--space-md);
   }
 
   .page-head .dates,

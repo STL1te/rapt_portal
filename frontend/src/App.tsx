@@ -78,6 +78,11 @@ export default function App() {
         </nav>
 
         <div className="sidebar-foot">
+          <nav>
+            <NavLink to="/admin" title="Админ-панель">
+              <i className="fa-solid fa-gear" /> <span className="nav-label">Админ-панель</span>
+            </NavLink>
+          </nav>
           <button
             type="button"
             className="icon-btn sidebar-collapse"
@@ -104,9 +109,6 @@ export default function App() {
             <img src="/favicon.png" className="brand-icon" alt="" /> RAPT Portal
           </div>
           <div className="topbar-actions">
-            <NavLink to="/admin" className="icon-btn" title="Администрирование">
-              <i className="fa-solid fa-gear" />
-            </NavLink>
             <ThemeToggle />
           </div>
         </header>
