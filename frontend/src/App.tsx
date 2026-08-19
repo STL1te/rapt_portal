@@ -25,8 +25,6 @@ const primaryNavItems = [
   { to: '/yeasts', label: 'Дрожжи', icon: 'fa-solid fa-vial', end: false },
 ] as const
 
-const isMobile = () => window.matchMedia('(max-width: 900px)').matches
-
 export default function App() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -78,15 +76,27 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+
+        <div className="sidebar-foot">
+          <button
+            type="button"
+            className="icon-btn sidebar-collapse"
+            aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed((v) => !v)}
+          >
+            <i className={`fa-solid fa-angles-${collapsed ? 'right' : 'left'}`} />
+          </button>
+        </div>
       </aside>
       <main>
         <header className="topbar">
           <button
             type="button"
-            className="icon-btn"
-            aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            className="icon-btn topbar-menu"
+            aria-label="Открыть меню"
             aria-expanded={sidebarOpen}
-            onClick={() => (isMobile() ? setSidebarOpen((v) => !v) : setCollapsed((v) => !v))}
+            onClick={() => setSidebarOpen((v) => !v)}
           >
             <i className="fa-solid fa-bars" />
           </button>
