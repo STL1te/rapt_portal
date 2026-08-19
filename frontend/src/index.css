@@ -183,7 +183,7 @@ main {
 }
 
 @media (min-width: 901px) {
-  .topbar-menu {
+  .topbar .topbar-menu {
     display: none;
   }
   .sidebar.collapsed .sidebar-foot {
