@@ -1676,7 +1676,7 @@ th {
   margin-bottom: var(--space-md);
 }
 
-.page-head-actions button,
+.page-head-actions button:not(.btn-solid),
 .profile-actions button,
 .pagination-actions button,
 .steps-head button,
@@ -1692,7 +1692,7 @@ th {
   cursor: pointer;
 }
 
-.page-head-actions button:hover:not(:disabled),
+.page-head-actions button:not(.btn-solid):hover:not(:disabled),
 .profile-actions button:hover:not(:disabled),
 .pagination-actions button:hover:not(:disabled),
 .step-editor-head button:hover:not(:disabled),

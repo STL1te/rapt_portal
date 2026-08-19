@@ -21,7 +21,7 @@ export default function Profiles() {
         <h2>Профили</h2>
         <div className="page-head-actions">
           <span className="dates muted">Всего: {data?.length ?? 0}</span>
-          <button type="button" onClick={() => navigate('/profiles/wizard')}>
+          <button type="button" className="btn-solid" onClick={() => navigate('/profiles/wizard')}>
             <i className="fa-solid fa-wand-magic-sparkles" /> AI-мастер
           </button>
           <button type="button" onClick={() => navigate('/profiles/new')}>
