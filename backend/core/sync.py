@@ -298,11 +298,20 @@ def _refresh_gravities(session_id: str) -> None:
 
 
 def _og(g: list[float]) -> float:
-    """Early plateau."""
+    """Highest sustained plateau in the first two-thirds of the session.
+
+    A plain first-window median misses a deliberate mid-session gravity bump
+    (e.g. sugar syrup added after pitching). Take the max over a rolling
+    median instead, so a real, sustained rise counts as OG while single-point
+    spikes stay smoothed out. Restricted to the first two-thirds so an
+    end-of-session Pill-lifted up-drift (see `_fg`) isn't mistaken for OG.
+    """
     import statistics
 
     n = max(5, len(g) // 20)  # ~5% window
-    return statistics.median(g[:n])
+    head = g[: max(n, 2 * len(g) // 3)]
+    windows = (statistics.median(head[i : i + n]) for i in range(len(head) - n + 1))
+    return max(windows, default=statistics.median(g[:n]))
 
 
 def _fg(g: list[float]) -> float:

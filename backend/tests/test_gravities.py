@@ -23,6 +23,13 @@ def test_pill_lifted_at_end():
     assert abs(_fg(g) - 1012) < 4  # lands on the real plateau, not the spike
 
 
+def test_sugar_added_mid_session_raises_og():
+    # starts at 1040, sugar syrup stirred in early raises it to 1055, then ferments to 1010
+    g = [1040] * 8 + [1055] * 15 + list(range(1055, 1010, -1)) + [1010] * 20
+    assert abs(_og(g) - 1055) < 2
+    assert _fg(g) <= _og(g)
+
+
 def test_dry_cider_below_1000():
     # legitimately finishes below water
     g = [1052] * 10 + list(range(1052, 998, -1)) + [998] * 25
