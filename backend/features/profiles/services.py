@@ -87,6 +87,14 @@ def sync_profiles(portal_token: str | None = None) -> int:
             if not pid:
                 continue
             seen.add(pid)
+            existing = db.get(Profile, pid)
+            if existing is not None and existing.draft:
+                # A draft holds edits RAPT has not seen yet, so the server copy is NOT
+                # authoritative for it: overwriting would silently discard them. That is
+                # what made uploading one profile wipe every other edited profile —
+                # upload resyncs the whole library. upload_profile clears the flag on the
+                # profile it just pushed, and this sync then picks the server copy up.
+                continue
             steps = sorted((p.get("steps") or []), key=lambda s: s.get("order") or 0)
             sync._upsert(
                 db,
@@ -278,6 +286,17 @@ def upload_profile(profile_id: str, portal_token: str | None = None) -> dict:
         saved = resp.json() if resp.content else None
 
     new_id = saved.get("id") if isinstance(saved, dict) else None
+
+    # RAPT has accepted this profile's edits, so it is no longer a draft. Clear the flag
+    # before the resync — the resync skips drafts, and this one must now take the
+    # server's copy (with the GUIDs RAPT assigned).
+    if not was_local:
+        with SessionLocal() as db:
+            uploaded = db.get(Profile, profile_id)
+            if uploaded:
+                uploaded.draft = False
+                db.commit()
+
     synced = sync_profiles(token)
 
     if was_local:
