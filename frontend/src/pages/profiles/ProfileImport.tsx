@@ -125,8 +125,14 @@ export default function ProfileImport() {
       // hand the unsaved profile to the editor, same as the AI wizard: nothing is
       // persisted until the user saves it there
       navigate('/profiles/new', { state: { generated: profile } })
-    } catch {
-      setError(`Не удалось разобрать файл как ${selected.title}. Проверьте выбранный формат.`)
+    } catch (e) {
+      // keep the server's reason — it names the actual problem (bad JSON, an addition
+      // outside the boil, a field the recipe is missing), which the generic hint can't
+      const reason = e instanceof Error ? e.message : ''
+      setError(
+        `Не удалось разобрать файл как ${selected.title}. Проверьте выбранный формат.` +
+          (reason ? ` Ответ сервера: ${reason}` : ''),
+      )
       setLoading(false)
     }
   }
