@@ -1,27 +1,15 @@
 """Sync the yeast catalog from the RAPT portal inventory."""
 
-import os
-from pathlib import Path
-
 import httpx
 from sqlalchemy import select
 
-from core import sync
+from core import rapt_auth, sync
 from core.config import API_BASE
 from core.db import SessionLocal, Yeast
 
 
-def _load_token() -> str:
-    tok = os.environ.get("PORTAL_TOKEN", "")
-    if not tok and Path(".portal_token").exists():
-        tok = Path(".portal_token").read_text(encoding="utf-8")
-    return tok.removeprefix("Bearer ").strip()
-
-
-def sync_yeasts(portal_token: str | None = None) -> int:
-    token = (portal_token or _load_token()).removeprefix("Bearer ").strip()
-    if not token:
-        raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
+def sync_yeasts() -> int:
+    token = rapt_auth.portal_token()
 
     headers = {"Authorization": f"Bearer {token}"}
     page = 1

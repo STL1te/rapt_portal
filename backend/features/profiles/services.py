@@ -8,14 +8,12 @@ upload (portal AddOrUpdateProfile) come later.
 
 import json
 import logging
-import os
 import uuid
-from pathlib import Path
 
 import httpx
 from sqlalchemy import select
 
-from core import sync
+from core import rapt_auth, sync
 from core.config import API_BASE
 from core.db import Profile, SessionLocal
 from core.serializers import row
@@ -46,13 +44,6 @@ _ALERT_FIELDS = ("id", "alertText", "trigger", "operator", "temperature", "gravi
 _STEP_ALERT_FIELDS = (*_ALERT_FIELDS, "length")
 
 
-def _load_token() -> str:
-    tok = os.environ.get("PORTAL_TOKEN", "")
-    if not tok and Path(".portal_token").exists():
-        tok = Path(".portal_token").read_text(encoding="utf-8")
-    return tok.removeprefix("Bearer ").strip()
-
-
 def _pick(src: dict, fields: tuple[str, ...]) -> dict:
     return {k: src.get(k) for k in fields}
 
@@ -65,11 +56,9 @@ def _step(src: dict, order: int | None = None) -> dict:
     return d
 
 
-def sync_profiles(portal_token: str | None = None) -> int:
+def sync_profiles() -> int:
     """Pull the full profile library (with alerts) and upsert it; archive vanished ones."""
-    token = (portal_token or _load_token()).removeprefix("Bearer ").strip()
-    if not token:
-        raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
+    token = rapt_auth.portal_token()
 
     headers = {"Authorization": f"Bearer {token}"}
     with httpx.Client(timeout=60) as client:
@@ -255,12 +244,10 @@ def _upload_body(p: Profile) -> dict:
     )
 
 
-def upload_profile(profile_id: str, portal_token: str | None = None) -> dict:
+def upload_profile(profile_id: str) -> dict:
     """POST the draft to RAPT, then resync so the server's copy (with real GUIDs)
     replaces the local draft."""
-    token = (portal_token or _load_token()).removeprefix("Bearer ").strip()
-    if not token:
-        raise SystemExit("Set PORTAL_TOKEN to a portal bearer token")
+    token = rapt_auth.portal_token()
 
     with SessionLocal() as db:
         p = db.get(Profile, profile_id)
@@ -297,7 +284,7 @@ def upload_profile(profile_id: str, portal_token: str | None = None) -> dict:
                 uploaded.draft = False
                 db.commit()
 
-    synced = sync_profiles(token)
+    synced = sync_profiles()
 
     if was_local:
         with SessionLocal() as db:

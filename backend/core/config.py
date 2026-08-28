@@ -13,6 +13,8 @@ def _normalize_database_url(value: str) -> str:
     return value
 
 
+# Encrypts the stored RAPT refresh token. No default: a hardcoded one is no secret.
+APP_SECRET = os.getenv("APP_SECRET", "")
 RAPT_USERNAME = os.getenv("RAPT_USERNAME", "")
 RAPT_SECRET = os.getenv("RAPT_SECRET", "")
 DATABASE_URL = _normalize_database_url(
@@ -119,4 +121,11 @@ LLM_CHAT_TEMPERATURE = 0.5
 LLM_TOP_P = 0.9
 
 TOKEN_URL = "https://id.rapt.io/connect/token"
+AUTHORIZE_URL = "https://id.rapt.io/connect/authorize"
 API_BASE = "https://api.rapt.io"
+
+# OAuth login as the RAPT web app itself: id.rapt.io only knows these public clients,
+# and only app.rapt.io/callback is registered as a redirect for `rapt-web`.
+OAUTH_CLIENT_ID = "rapt-web"
+OAUTH_REDIRECT_URI = "https://app.rapt.io/callback"
+OAUTH_SCOPE = "openid profile rapt-api rapt-api.user IdentityServerApi offline_access"

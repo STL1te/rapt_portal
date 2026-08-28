@@ -112,8 +112,9 @@ def test_sync_keeps_edits_of_profiles_not_being_uploaded(db, monkeypatch):
     server = [_server_profile("p-1", "Профиль A"), _server_profile("p-2", "Профиль B")]
     uploads = []
     monkeypatch.setattr(services.httpx, "Client", lambda **_: _FakeClient(server, uploads))
+    monkeypatch.setattr(services.rapt_auth, "portal_token", lambda: "token")
 
-    services.upload_profile("p-1", "token")
+    services.upload_profile("p-1")
 
     with db() as session:
         uploaded = session.get(Profile, "p-1")
@@ -136,8 +137,9 @@ def test_sync_still_refreshes_profiles_without_local_edits(db, monkeypatch):
 
     server = [_server_profile("p-1", "Новое имя")]
     monkeypatch.setattr(services.httpx, "Client", lambda **_: _FakeClient(server, []))
+    monkeypatch.setattr(services.rapt_auth, "portal_token", lambda: "token")
 
-    services.sync_profiles("token")
+    services.sync_profiles()
 
     with db() as session:
         refreshed = session.get(Profile, "p-1")

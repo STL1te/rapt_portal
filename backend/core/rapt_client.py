@@ -5,6 +5,7 @@ import time
 
 import httpx
 
+from core import rapt_auth
 from core.config import API_BASE, RAPT_SECRET, RAPT_USERNAME, TOKEN_URL
 
 _token: str | None = None
@@ -14,6 +15,9 @@ _token_expiry: float = 0.0  # unix seconds
 async def get_token() -> str:
     """Return a valid bearer token, refreshing 60s before it expires."""
     global _token, _token_expiry
+    if rapt_auth.is_connected():
+        # OAuth login covers the public API too, so RAPT_USERNAME/RAPT_SECRET are optional
+        return await asyncio.to_thread(rapt_auth.access_token)
     if _token and time.time() < _token_expiry - 60:
         return _token
 

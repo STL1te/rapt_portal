@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.18.5",
     "psycopg[binary]>=3.3.4",
     "openai>=1.0",
+    "cryptography>=50.0.1",
 ]
 
 [dependency-groups]

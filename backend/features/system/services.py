@@ -134,40 +134,40 @@ async def start_base_sync_job() -> dict[str, Any]:
     return await _start_job("base_sync", run_base_sync)
 
 
-async def start_portal_sync_job(portal_token: str, force: bool) -> dict[str, Any]:
+async def start_portal_sync_job(force: bool) -> dict[str, Any]:
     async def runner() -> dict[str, Any]:
         async with _run_locks["portal_sync"]:
             async with _run_locks["base_sync"]:
-                await portal_data_sync(force=force, portal_token=portal_token)
+                await portal_data_sync(force=force)
         return {"status": "ok"}
 
     return await _start_job("portal_sync", runner)
 
 
-async def start_yeast_sync_job(portal_token: str) -> dict[str, Any]:
+async def start_yeast_sync_job() -> dict[str, Any]:
     async def runner() -> dict[str, Any]:
         async with _run_locks["yeast_sync"]:
-            count = await asyncio.to_thread(sync_yeasts, portal_token)
+            count = await asyncio.to_thread(sync_yeasts)
         return {"status": "ok", "count": count}
 
     return await _start_job("yeast_sync", runner)
 
 
-async def start_profile_sync_job(portal_token: str) -> dict[str, Any]:
+async def start_profile_sync_job() -> dict[str, Any]:
     async def runner() -> dict[str, Any]:
         async with _run_locks["profile_sync"]:
-            count = await asyncio.to_thread(sync_profiles, portal_token)
+            count = await asyncio.to_thread(sync_profiles)
         return {"status": "ok", "count": count}
 
     return await _start_job("profile_sync", runner)
 
 
-async def start_profile_upload_job(profile_id: str, portal_token: str) -> dict[str, Any]:
+async def start_profile_upload_job(profile_id: str) -> dict[str, Any]:
     async def runner() -> dict[str, Any]:
         async with _run_locks["profile_upload"]:
             # resync inside upload_profile also touches profiles, so hold that lock too
             async with _run_locks["profile_sync"]:
-                return await asyncio.to_thread(upload_profile, profile_id, portal_token)
+                return await asyncio.to_thread(upload_profile, profile_id)
 
     return await _start_job("profile_upload", runner)
 

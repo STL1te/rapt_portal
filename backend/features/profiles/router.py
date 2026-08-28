@@ -21,10 +21,6 @@ from .services import create_profile, delete_profile, profile_dict, update_profi
 router = APIRouter()
 
 
-class UploadRequest(BaseModel):
-    portal_token: str
-
-
 class RecipeImportRequest(BaseModel):
     format: RecipeSourceFormat
     content: str = Field(min_length=1, max_length=2_000_000)
@@ -119,5 +115,5 @@ def del_profile(profile_id: str) -> None:
 
 
 @router.post("/api/profiles/{profile_id}/upload", status_code=status.HTTP_202_ACCEPTED)
-async def upload(profile_id: str, payload: UploadRequest) -> dict:
-    return await start_profile_upload_job(profile_id, payload.portal_token)
+async def upload(profile_id: str) -> dict:
+    return await start_profile_upload_job(profile_id)

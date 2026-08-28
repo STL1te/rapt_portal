@@ -2,18 +2,17 @@
 
 The public RAPT API exposes only the *active* session per hydrometer, so past
 sessions come from the portal-only endpoint GetHydrometerProfileSessions, which
-needs a `rapt-web` bearer token. Triggered from the System Syncs page via
-``POST /api/portal_data_sync``.
+needs a `rapt-web` bearer token (see core.rapt_auth). Triggered from the System
+Syncs page via ``POST /api/portal_data_sync``.
 """
 
 import asyncio
 import json
-import os
 
 import httpx
 from sqlalchemy import func, select
 
-from core import rapt_client, sync
+from core import rapt_auth, rapt_client, sync
 from core.config import API_BASE
 from core.db import (
     BrewSession,
@@ -22,18 +21,6 @@ from core.db import (
     HydrometerTelemetry,
     SessionLocal,
 )
-
-
-def _normalize_token(token: str | None) -> str:
-    return (token or "").removeprefix("Bearer ").strip()
-
-
-def _load_token(portal_token: str | None = None) -> str:
-    tok = portal_token or os.environ.get("PORTAL_TOKEN", "")
-    if not tok and os.path.exists(".portal_token"):
-        with open(".portal_token", encoding="utf-8") as f:
-            tok = f.read()
-    return _normalize_token(tok)
 
 
 def _safe_name(value: str | None) -> str:
@@ -63,10 +50,8 @@ def _is_new(db, model, row_id: str) -> bool:
     return db.get(model, row_id) is None
 
 
-async def portal_data_sync(force: bool = False, portal_token: str | None = None) -> None:
-    token = _load_token(portal_token)
-    if not token:
-        raise SystemExit("Set PORTAL_TOKEN to a portal (rapt-web) bearer token")
+async def portal_data_sync(force: bool = False) -> None:
+    token = await asyncio.to_thread(rapt_auth.portal_token)
 
     print("base sync:", await sync.sync_once())
 

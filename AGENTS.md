@@ -27,6 +27,8 @@ RAPT Portal is a local dashboard for RAPT devices:
     gravity estimation.
   - `core/rapt_client.py` - token cache and thin async client for upstream RAPT
     endpoints.
+  - `core/rapt_auth.py` - RAPT OAuth login (PKCE), encrypted refresh-token
+    storage and the bearer token used by portal-only calls.
   - `core/serializers.py` - generic ORM row -> dict helper.
   - `core/db_migrations.py` - alembic upgrade runner used by `init_db`.
 - `backend/features/<name>/` - one folder per feature, each with `router.py`
@@ -55,11 +57,27 @@ Public OpenAPI spec:
 
 `https://api.rapt.io/swagger/v1/swagger.json`
 
-Authentication:
+Authentication (`core/rapt_auth.py`, preferred):
+
+- OAuth authorization code + PKCE as the `rapt-web` public client, the same one
+  app.rapt.io uses. id.rapt.io accepts no other redirect than
+  `https://app.rapt.io/callback`, so the code cannot land on this app: the user
+  pastes the callback address into the System Syncs page once, and the refresh
+  token (encrypted with `APP_SECRET`, stored in `app_settings`) keeps both the
+  public API and the portal-only endpoints signed in.
+- Authorize URL: `https://id.rapt.io/connect/authorize`; token URL:
+  `https://id.rapt.io/connect/token`; client `rapt-web`; scope
+  `openid profile rapt-api rapt-api.user IdentityServerApi offline_access`.
+- Device code and client credentials are rejected for every public RAPT client,
+  and only `app.rapt.io/callback` is a registered redirect — do not "fix" the
+  flow by pointing it at localhost.
+
+Authentication (legacy fallback, used only when nobody has logged in):
 
 - Token URL: `https://id.rapt.io/connect/token`
 - Form fields: `client_id=rapt-user`, `grant_type=password`,
   `username=$RAPT_USERNAME`, `password=$RAPT_SECRET`
+- Portal-only endpoints: `PORTAL_TOKEN` env var or a `.portal_token` file.
 - API base: `https://api.rapt.io`
 - Auth scheme: Bearer JWT
 

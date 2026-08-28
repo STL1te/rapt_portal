@@ -62,7 +62,6 @@ export default function ProfileDetail() {
   useTitle(data?.name ?? 'Профиль')
 
   const location = useLocation()
-  const [portalToken, setPortalToken] = useState('')
   const [busy, setBusy] = useState<'upload' | 'delete' | null>(null)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -74,10 +73,9 @@ export default function ProfileDetail() {
   async function upload(profileId: string) {
     setActionError(null)
     setUploaded(false)
-    if (!portalToken.trim()) return setActionError('Вставьте portal token для выгрузки')
     setBusy('upload')
     try {
-      const job = await uploadProfile(profileId, portalToken.trim())
+      const job = await uploadProfile(profileId)
       const done = await pollJob(job.id)
       if (done.status === 'failed') throw new Error(done.error ?? 'upload failed')
       await queryClient.invalidateQueries({ queryKey: ['profiles'] })
@@ -183,19 +181,6 @@ export default function ProfileDetail() {
           </button>
         ) : null}
       </div>
-      {/* only drafts can be uploaded, so the token is dead weight elsewhere */}
-      {data.draft ? (
-        <label className="field profile-token">
-          <span>Portal token (для выгрузки в RAPT)</span>
-          <textarea
-            className="sync-token"
-            rows={2}
-            value={portalToken}
-            onChange={(e) => setPortalToken(e.target.value)}
-            placeholder="Bearer eyJ..."
-          />
-        </label>
-      ) : null}
       {uploaded ? <p className="success">Профиль выгружен в RAPT ✓</p> : null}
       {actionError ? <p className="error">{actionError}</p> : null}
 

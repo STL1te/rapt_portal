@@ -162,6 +162,15 @@ class Profile(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class AppSetting(Base):
+    """Key/value runtime settings that must outlive the container (RAPT refresh token)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class SystemJob(Base):
     __tablename__ = "system_jobs"
 

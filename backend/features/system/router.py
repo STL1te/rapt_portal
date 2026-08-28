@@ -1,7 +1,9 @@
-"""Health check and manual sync trigger."""
+"""Health check, RAPT OAuth login and manual sync triggers."""
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
+
+from core import rapt_auth
 
 from .services import (
     get_job,
@@ -16,17 +18,37 @@ from .services import (
 router = APIRouter()
 
 
-class PortalTokenRequest(BaseModel):
-    portal_token: str
-
-
-class PortalSyncRequest(PortalTokenRequest):
+class PortalSyncRequest(BaseModel):
     force: bool = False
+
+
+class RaptAuthRequest(BaseModel):
+    # the whole https://app.rapt.io/callback?code=... URL, or just the code
+    code: str
 
 
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/api/rapt_auth")
+def rapt_auth_status() -> dict:
+    return {"connected": rapt_auth.is_connected()}
+
+
+@router.get("/api/rapt_auth/url")
+def rapt_auth_url() -> dict:
+    return {"url": rapt_auth.login_url()}
+
+
+@router.post("/api/rapt_auth")
+def rapt_auth_connect(payload: RaptAuthRequest) -> dict:
+    try:
+        rapt_auth.complete(payload.code)
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(400, str(error)) from error
+    return {"connected": True}
 
 
 @router.post("/api/sync", status_code=status.HTTP_202_ACCEPTED)
@@ -36,17 +58,17 @@ async def trigger_sync() -> dict:
 
 @router.post("/api/portal_data_sync", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_portal_data_sync(payload: PortalSyncRequest) -> dict:
-    return await start_portal_sync_job(payload.portal_token, payload.force)
+    return await start_portal_sync_job(payload.force)
 
 
 @router.post("/api/sync_yeasts", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_sync_yeasts(payload: PortalTokenRequest) -> dict:
-    return await start_yeast_sync_job(payload.portal_token)
+async def trigger_sync_yeasts() -> dict:
+    return await start_yeast_sync_job()
 
 
 @router.post("/api/sync_profiles", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_sync_profiles(payload: PortalTokenRequest) -> dict:
-    return await start_profile_sync_job(payload.portal_token)
+async def trigger_sync_profiles() -> dict:
+    return await start_profile_sync_job()
 
 
 @router.get("/api/system-jobs")

@@ -30,8 +30,7 @@ export async function deleteProfile(id: string): Promise<void> {
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
 }
 
-export const uploadProfile = (id: string, portalToken: string) =>
-  post<SystemJob>(`/api/profiles/${id}/upload`, { portal_token: portalToken })
+export const uploadProfile = (id: string) => post<SystemJob>(`/api/profiles/${id}/upload`)
 
 export const importProfile = (
   format: RecipeSourceFormat,

@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { dateTime } from '@/lib/fmt'
 import {
+  connectRaptAuth,
   getActiveSystemJobs,
+  getRaptAuth,
+  getRaptAuthUrl,
   getSystemJobHistory,
   getSystemJob,
   triggerPortalDataSync,
@@ -91,10 +94,83 @@ function formatJobResult(job: SystemJob): string {
   return JSON.stringify(job.result, null, 2)
 }
 
+/** RAPT login: id.rapt.io only redirects back to app.rapt.io, so the code cannot land
+ * on us — the user copies the callback address here once and the refresh token does the
+ * rest. */
+function RaptLogin() {
+  const [connected, setConnected] = useState<boolean | null>(null)
+  const [pasted, setPasted] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getRaptAuth()
+      .then((r) => setConnected(r.connected))
+      .catch(() => setConnected(false))
+  }, [])
+
+  async function openLogin() {
+    setError(null)
+    try {
+      const { url } = await getRaptAuthUrl()
+      window.open(url, '_blank', 'noopener')
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  async function connect() {
+    setError(null)
+    setBusy(true)
+    try {
+      await connectRaptAuth(pasted.trim())
+      setConnected(true)
+      setPasted('')
+    } catch (e) {
+      setError(String(e))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="panel">
+      <h3 className="panel-title">Доступ к RAPT</h3>
+      <p className={connected ? 'success' : 'muted'}>
+        {connected === null ? '…' : connected ? 'Подключено ✓' : 'Не подключено'}
+      </p>
+      <ol className="muted">
+        <li>
+          <button type="button" onClick={() => void openLogin()}>
+            <i className="fa-solid fa-right-to-bracket" /> Войти через RAPT
+          </button>{' '}
+          — откроется app.rapt.io.
+        </li>
+        <li>
+          После логина адрес станет <code>app.rapt.io/callback?code=…</code> — скопируйте его
+          целиком (если страница успела уйти дальше, вернитесь кнопкой «назад»).
+        </li>
+      </ol>
+      <label className="field">
+        <span>Адрес callback</span>
+        <textarea
+          className="sync-token"
+          rows={3}
+          value={pasted}
+          onChange={(event) => setPasted(event.target.value)}
+          placeholder="https://app.rapt.io/callback?code=..."
+        />
+      </label>
+      <button type="button" disabled={busy || !pasted.trim()} onClick={() => void connect()}>
+        {busy ? 'Подключаю…' : 'Подключить'}
+      </button>
+      {error ? <p className="error">{error}</p> : null}
+    </section>
+  )
+}
+
 export default function SystemSyncs() {
   useTitle('Системные синки')
   const queryClient = useQueryClient()
-  const [portalToken, setPortalToken] = useState('')
   const [forcePortalSync, setForcePortalSync] = useState(false)
   const [jobsByKind, setJobsByKind] = useState<Partial<Record<JobKind, SystemJob>>>({})
   const [historyPage, setHistoryPage] = useState(1)
@@ -206,21 +282,7 @@ export default function SystemSyncs() {
 
   return (
     <>
-      <section className="panel">
-        <label className="field">
-          <span>Portal token</span>
-          <textarea
-            className="sync-token"
-            rows={4}
-            value={portalToken}
-            onChange={(event) => setPortalToken(event.target.value)}
-            placeholder="Bearer eyJ..."
-          />
-        </label>
-        <p className="muted">
-          Используется для portal data sync и sync yeasts. На сервере не сохраняется.
-        </p>
-      </section>
+      <RaptLogin />
 
       <div className="sync-card-grid">
         <SyncCard
@@ -237,12 +299,10 @@ export default function SystemSyncs() {
           title="Portal data sync"
           description="Подтягивает историю profile sessions из portal-only API и обновляет локальные сессии."
           actionLabel="Запустить"
-          disabled={isActive(portalJob) || !portalToken.trim()}
+          disabled={isActive(portalJob)}
           statusText={portalState.text}
           statusTone={portalState.tone}
-          onRun={() =>
-            startJob('portal_sync', () => triggerPortalDataSync(portalToken, forcePortalSync))
-          }
+          onRun={() => startJob('portal_sync', () => triggerPortalDataSync(forcePortalSync))}
         >
           <label className="sync-checkbox">
             <input
@@ -258,20 +318,20 @@ export default function SystemSyncs() {
           title="Sync yeasts"
           description="Обновляет локальный каталог дрожжей из portal inventory."
           actionLabel="Запустить"
-          disabled={isActive(yeastJob) || !portalToken.trim()}
+          disabled={isActive(yeastJob)}
           statusText={yeastState.text}
           statusTone={yeastState.tone}
-          onRun={() => startJob('yeast_sync', () => triggerYeastSync(portalToken))}
+          onRun={() => startJob('yeast_sync', triggerYeastSync)}
         />
 
         <SyncCard
           title="Sync profiles"
           description="Обновляет локальную библиотеку профилей (с алертами) из portal API."
           actionLabel="Запустить"
-          disabled={isActive(profileJob) || !portalToken.trim()}
+          disabled={isActive(profileJob)}
           statusText={profileState.text}
           statusTone={profileState.tone}
-          onRun={() => startJob('profile_sync', () => triggerProfileSync(portalToken))}
+          onRun={() => startJob('profile_sync', triggerProfileSync)}
         />
       </div>
 
