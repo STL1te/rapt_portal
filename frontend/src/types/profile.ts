@@ -104,6 +104,21 @@ export type Profile = ProfileListItem & {
 
 export type ProfileType = { id: string; name: string | null }
 
+// Mirrors backend/features/recipes/brewzilla_overrides.py BrewZillaOverrides —
+// device-process choices for compiling an imported recipe. All optional: an unset
+// field falls back to the compiler's own default.
+export type BrewZillaOverrides = {
+  include_temperature_alerts?: boolean
+  include_sparge?: boolean
+  include_mash_out?: boolean
+  heat_power_pct?: number
+  rest_power_pct?: number
+  mash_pid_enabled?: boolean
+  mash_in_temperature_c?: number
+}
+
+export type RecipeSourceFormat = 'brewfather_json' | 'beerxml' | 'beerjson'
+
 // editor payload for create/update (backend ProfileIn)
 export type ProfileInput = {
   name: string

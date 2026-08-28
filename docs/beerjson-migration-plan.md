@@ -1,10 +1,54 @@
 # Переход рецепт-визарда на BeerJSON: план реализации
 
-Статус: утверждён к реализации.
+Статус: реализован. См. блок «Что изменилось после реализации» ниже.
 Дата: 2026-07-24.
 Исполнитель: младшая модель под ревью. Этот документ — контракт: тексты промптов,
 модели данных и правила компилятора из него переносятся в код **дословно**, кроме мест,
 явно помеченных «сверить с вендоренной схемой».
+
+---
+
+## Что изменилось после реализации (2026-08-28)
+
+Решения плана в силе; изменились адреса файлов и границы скоупа. Ниже по тексту пути
+уже обновлены — сами правила и тексты промптов не трогались.
+
+**Переезд из `features/ai/` в `features/recipes/`.** Рецептурный слой перестал быть
+принадлежностью AI-визарда: те же модели и тот же компилятор обслуживают импорт
+сторонних форматов, где LLM не участвует. `core/` осталась инфраструктурой (config, db,
+rapt_client, sync).
+
+| Было | Стало |
+|---|---|
+| `features/ai/beerjson_models.py` | `features/recipes/beerjson_models.py` |
+| `features/ai/beerjson_schema.py` | `features/recipes/beerjson_schema.py` |
+| `features/ai/brewzilla_overrides.py` | `features/recipes/brewzilla_overrides.py` |
+| `features/ai/brewzilla_compiler.py` | `features/recipes/brewzilla_compiler.py` |
+
+`ProfileIn`/`StepIn`/`AlertIn` вынесены из `features/profiles/router.py` в
+`features/profiles/schemas.py`: компилятор импортирует схему, роутер импортирует
+компилятор — цикла нет (роутер ре-экспортирует имена, внешние импорты не сломаны).
+
+**Импорт рецептов реализован** (в §9 он был «вне скоупа»). Фасад
+`features/recipes/importers.py` → `import_recipe(format, raw) -> RecipeModel`, парсеры
+`brewfather.py`, `beerxml.py`, `beerjson.py`, общий маппинг в `import_common.py`.
+Эндпоинт `POST /api/profiles/import` компилирует результат тем же
+`compile_brewzilla_profile`. Импорт BeerJSON почти бесплатен (наша модель и есть
+подмножество BeerJSON), но требует двух вещей: прунинга свойств вне подмножества
+(модели `extra="forbid"`, покрыто 14 из 24 свойств `RecipeType`) и отбрасывания шагов
+затирания `sparge`/`drain mash tun` — это не паузы, промывку добавляет компилятор.
+
+**Изменения в компиляторе, затронувшие и AI-путь:**
+
+- разгонные шаги `→ N °C` получают PID паузы (было жёстко `pid=False`): разгон подходит
+  к температуре паузы и без регулировки её проскакивает;
+- публичные `split_mash_out(recipe)` и `rest_display_name(rest)` — чтобы вызывающая
+  сторона, навешивающая алерт на каждую паузу, считала индексы и подписи ровно так же,
+  как компилятор, а не своей копией правила.
+
+`BrewZillaOverrides` намеренно **не** расширялась: это схема инструмента LLM, и правка
+её ради импорта стоила бы инвалидации собранных спек. Всё, что нужно только импорту
+(например, алерты на окончание пауз), живёт в `RecipeImportRequest`.
 
 ---
 
@@ -105,9 +149,9 @@
 | Файл | Содержимое |
 |---|---|
 | `backend/vendor/beerjson/*.json` | Вендоренная официальная схема BeerJSON 1.0 |
-| `backend/features/ai/beerjson_models.py` | Pydantic-подмножество BeerJSON + `to_beerjson_document()` |
-| `backend/features/ai/brewzilla_overrides.py` | `BrewZillaOverrides`, `merge_overrides()` |
-| `backend/features/ai/brewzilla_compiler.py` | `compile_brewzilla_profile(recipe, overrides)` |
+| `backend/features/recipes/beerjson_models.py` | Pydantic-подмножество BeerJSON + `to_beerjson_document()` |
+| `backend/features/recipes/brewzilla_overrides.py` | `BrewZillaOverrides`, `merge_overrides()` |
+| `backend/features/recipes/brewzilla_compiler.py` | `compile_brewzilla_profile(recipe, overrides)` |
 | `backend/features/ai/recipe_wizard.py` | Перевод на новую схему; старая `RecipeSpec` и старый компилятор удаляются |
 | `backend/prompts/recipe_wizard.md` | Новый текст (приведён в Фазе 4) |
 | `backend/prompts/recipe_wizard_validator.md` | Новый текст (приведён в Фазе 4) |
@@ -215,7 +259,7 @@ BeerJSON не имеет отдельного типа «вирпул»; исп�
    commit hash.
 2. Добавить dev-зависимости `jsonschema` и `referencing` (тем же способом, каким в
    проекте подключены остальные зависимости).
-3. Создать `backend/features/ai/beerjson_schema.py`:
+3. Создать `backend/features/recipes/beerjson_schema.py`:
 
 ```python
 """Validator against the vendored official BeerJSON schema."""
@@ -267,7 +311,7 @@ def assert_valid_beerjson(document: dict) -> None:
 
 ## 5. Фаза 2 — Pydantic-модели
 
-### 5.1 `backend/features/ai/beerjson_models.py`
+### 5.1 `backend/features/recipes/beerjson_models.py`
 
 Код ниже — основа; поля с пометкой `# verify` сверить с вендоренной схемой (обязательность,
 состав enum) и при расхождении подчинить схеме. Enum-списки единиц можно сужать
@@ -524,7 +568,7 @@ def to_beerjson_document(recipe: RecipeModel) -> dict:
   спорная форма (см. §10), карбонизация упоминается в `notes`. Расширим отдельно.
 - `water_additions` (химия воды) не входят в v1.
 
-### 5.2 `backend/features/ai/brewzilla_overrides.py`
+### 5.2 `backend/features/recipes/brewzilla_overrides.py`
 
 ```python
 """BrewZilla process overrides: user preferences and explicit process requests that are
@@ -600,7 +644,7 @@ def merge_overrides(
 
 ## 6. Фаза 3 — компилятор
 
-`backend/features/ai/brewzilla_compiler.py`. Сигнатура:
+`backend/features/recipes/brewzilla_compiler.py`. Сигнатура:
 
 ```python
 def compile_brewzilla_profile(
@@ -916,9 +960,15 @@ broken validator, stream progress, forbidden enums, detailed human recipe) на 
 
 ## 9. Вне скоупа (следующие эпики, проектируем совместимо)
 
-- **Импорт BeerXML:** парсер (`pybeerxml` или свой) → маппинг в `RecipeModel` → тот же
-  `compile_brewzilla_profile`. LLM не участвует.
+- ~~**Импорт BeerXML:** парсер (`pybeerxml` или свой) → маппинг в `RecipeModel` → тот же
+  `compile_brewzilla_profile`. LLM не участвует.~~ **Сделано 2026-08-28**, своим парсером
+  (`xml.etree`, без зависимости) — вместе с BrewFather JSON и BeerJSON; см. блок вверху.
+  Совместимость подтвердилась: маппинг в `RecipeModel` действительно оказался
+  единственным, что понадобилось, компилятор не менялся под форматы.
 - **Персистентность рецептов** (хранение BeerJSON-документов в портале) и UI overrides.
+  UI overrides частично закрыт формой импорта (`/profiles/import`); хранение самих
+  BeerJSON-документов по-прежнему не сделано — импорт отдаёт готовый профиль, рецепт
+  после компиляции не сохраняется.
 - **Разметка корпуса и дистилляция маленькой модели:** вход `full_description`, эталон —
   `submit_recipe`-аргументы фронтирной модели, валидированные этим же Pydantic-слоем и
   conformance-тестом.

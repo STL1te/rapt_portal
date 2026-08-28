@@ -24,6 +24,9 @@ export default function Profiles() {
           <button type="button" className="btn-solid" onClick={() => navigate('/profiles/wizard')}>
             <i className="fa-solid fa-wand-magic-sparkles" /> AI-мастер
           </button>
+          <button type="button" onClick={() => navigate('/profiles/import')}>
+            <i className="fa-solid fa-file-import" /> Импорт
+          </button>
           <button type="button" onClick={() => navigate('/profiles/new')}>
             <i className="fa-solid fa-plus" /> Новый профиль
           </button>

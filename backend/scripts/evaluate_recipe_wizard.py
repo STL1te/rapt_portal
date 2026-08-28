@@ -9,9 +9,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from features.ai.beerjson_models import to_beerjson_document
 from features.ai.recipe_wizard import _generate_once
 from features.ai.router import RecipeWizardRequest
+from features.recipes.beerjson_models import to_beerjson_document
 
 
 async def _strict_generate(source: str, correction: str | None, *, retry: bool):

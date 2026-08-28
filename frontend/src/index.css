@@ -2063,6 +2063,100 @@ th {
   color: var(--accent);
 }
 
+/* format picker — pill-group semantics, card presentation (import sources) */
+.format-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-sm);
+}
+.format-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  text-align: left;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+.format-card:hover {
+  color: var(--text);
+}
+.format-card.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.format-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-weight: 600;
+}
+.format-card-desc {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.format-card.active .format-card-desc {
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* stack of toggle cards (import options) */
+.switch-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* one option as a card — RAPT's "Tell us about your setup" rows */
+.switch-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  /* tints against the panel in either theme: lightens on dark, darkens on light */
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  padding: var(--space-sm) var(--space-md);
+}
+.switch-card > i {
+  width: 1rem;
+  margin-top: var(--space-3xs);
+  color: var(--accent);
+  text-align: center;
+}
+.switch-card > div {
+  flex: 1;
+  min-width: 0;
+}
+
+/* info note — RAPT's `rounded-lg border px-3 py-2 text-sm border-info/30 bg-info/10
+   text-info`. Our palette has no separate --info token, so it rides on --accent. */
+.info-note {
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+/* the browser's default `margin: 1em 0` on <p> would out-measure the padding and
+   make the block look top/bottom-heavy against its own side padding */
+.info-note p {
+  margin: 0;
+}
+.info-note p + p {
+  margin-top: var(--space-xs);
+}
+
 /* toggle switch — RAPT's "Public Profile" control */
 .switch-row {
   display: flex;

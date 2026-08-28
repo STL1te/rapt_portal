@@ -12,6 +12,7 @@ import Hydrometers from '@/pages/hydrometers/Hydrometers'
 import HydrometerSessionPage from '@/pages/hydrometers/HydrometerSessionPage'
 import ProfileDetail from '@/pages/profiles/ProfileDetail'
 import ProfileEditor from '@/pages/profiles/ProfileEditor'
+import ProfileImport from '@/pages/profiles/ProfileImport'
 import Profiles from '@/pages/profiles/Profiles'
 import ProfileWizard from '@/pages/profiles/ProfileWizard'
 import YeastDetail from '@/pages/yeasts/YeastDetail'
@@ -122,6 +123,7 @@ export default function App() {
           <Route path="/brew-sessions/:id" element={<BrewSessionPage />} />
           <Route path="/profiles" element={<Profiles />} />
           <Route path="/profiles/wizard" element={<ProfileWizard />} />
+          <Route path="/profiles/import" element={<ProfileImport />} />
           <Route path="/profiles/new" element={<ProfileEditor />} />
           <Route path="/profiles/:id" element={<ProfileDetail />} />
           <Route path="/profiles/:id/edit" element={<ProfileEditor />} />

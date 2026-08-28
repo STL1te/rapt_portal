@@ -9,10 +9,10 @@ from openai import BadRequestError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from core.config import VALIDATOR_LLM, WIZARD_LLM, LLMConfig
+from features.recipes.beerjson_models import RecipeModel, to_beerjson_document
+from features.recipes.brewzilla_compiler import compile_brewzilla_profile
+from features.recipes.brewzilla_overrides import BrewZillaOverrides, merge_overrides
 
-from .beerjson_models import RecipeModel, to_beerjson_document
-from .brewzilla_compiler import compile_brewzilla_profile
-from .brewzilla_overrides import BrewZillaOverrides, merge_overrides
 from .services import _load_prompt, _run_chat_completion, merge_adjacent_roles
 
 logger = logging.getLogger(__name__)

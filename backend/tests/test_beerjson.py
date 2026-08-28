@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from features.ai.beerjson_models import (
+from features.recipes.beerjson_models import (
     BoilProcedureType,
     BoilStepType,
     CultureAdditionType,
@@ -31,8 +31,8 @@ from features.ai.beerjson_models import (
     YieldType,
     to_beerjson_document,
 )
-from features.ai.beerjson_schema import assert_valid_beerjson
-from features.ai.brewzilla_overrides import (
+from features.recipes.beerjson_schema import assert_valid_beerjson
+from features.recipes.brewzilla_overrides import (
     BrewZillaOverrides,
     MashTemperatureAddition,
     merge_overrides,

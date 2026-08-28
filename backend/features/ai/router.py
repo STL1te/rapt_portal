@@ -10,7 +10,8 @@ from fastapi.responses import StreamingResponse
 from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
-from .brewzilla_overrides import BrewZillaOverrides
+from features.recipes.brewzilla_overrides import BrewZillaOverrides
+
 from .recipe_wizard import generate_profile
 from .services import (
     open_conversation,

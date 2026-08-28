@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from features.ai.beerjson_models import (
+from features.recipes.beerjson_models import (
     BoilProcedureType,
     BoilStepType,
     CultureAdditionType,
@@ -23,8 +23,8 @@ from features.ai.beerjson_models import (
     TimingType,
     UnitType,
 )
-from features.ai.brewzilla_compiler import compile_brewzilla_profile
-from features.ai.brewzilla_overrides import (
+from features.recipes.brewzilla_compiler import compile_brewzilla_profile
+from features.recipes.brewzilla_overrides import (
     BrewZillaOverrides,
     MashTemperatureAddition,
     RestEndAlert,
@@ -129,8 +129,20 @@ def test_applies_power_and_pid_rules():
     assert first_rest["pidEnabled"] is True
     assert mash_out_transition["endType"] == "Temperature"
     assert mash_out_transition["heatingUtilisation"] == 90
+    # ramps run PID too — they approach a rest temperature and would otherwise overshoot
+    assert mash_out_transition["pidEnabled"] is True
     assert boil["heatingUtilisation"] == 90
     assert boil["pidEnabled"] is False
+
+
+def test_ramps_follow_the_mash_pid_toggle():
+    recipe = _base_recipe()
+    overrides = BrewZillaOverrides(heat_power_pct=90, rest_power_pct=50, mash_pid_enabled=False)
+
+    profile = compile_brewzilla_profile(recipe, overrides)
+
+    ramps = [step for step in profile["steps"] if step["name"].startswith("→")]
+    assert ramps and all(step["pidEnabled"] is False for step in ramps)
 
 
 def test_applies_defaults_and_boil_timing():
@@ -417,7 +429,7 @@ def test_overrides_take_priority_over_extracted_values():
     recipe = _base_recipe()
     extracted = BrewZillaOverrides(mash_in_temperature_c=70)
     user = BrewZillaOverrides(mash_in_temperature_c=66)
-    from features.ai.brewzilla_overrides import merge_overrides
+    from features.recipes.brewzilla_overrides import merge_overrides
 
     profile = compile_brewzilla_profile(recipe, merge_overrides(user, extracted))
 

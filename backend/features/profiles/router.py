@@ -1,61 +1,38 @@
 """Local recipe (profile) library: read, edit locally, upload to RAPT."""
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 from core.db import Profile, SessionLocal
+from features.recipes.brewzilla_compiler import (
+    compile_brewzilla_profile,
+    rest_display_name,
+    split_mash_out,
+)
+from features.recipes.brewzilla_overrides import BrewZillaOverrides, RestEndAlert
+from features.recipes.importers import RecipeSourceFormat, import_recipe
 from features.system.services import start_profile_upload_job
 
 from .enums import PROFILE_TYPE_OPTIONS
+from .schemas import AlertIn, ProfileIn, StepIn  # noqa: F401  (re-exported for callers)
 from .services import create_profile, delete_profile, profile_dict, update_profile
 
 router = APIRouter()
 
 
-class AlertIn(BaseModel):
-    id: str | None = None
-    alertText: str | None = None
-    trigger: str | None = None
-    operator: str | None = None
-    temperature: float | None = None
-    gravity: float | None = None
-    length: int | None = None  # step-level alerts only (trigger=Duration); RAPT Int32
-
-
-class StepIn(BaseModel):
-    id: str | None = None
-    name: str | None = None
-    order: int = 0
-    controlType: str | None = None
-    endType: str | None = None
-    durationType: str | None = None
-    operator: str | None = None
-    length: int | None = None  # seconds; RAPT Int32
-    temperature: float | None = None
-    minTemperature: float | None = None
-    maxTemperature: float | None = None
-    gravity: float | None = None
-    pumpEnabled: bool | None = None
-    pumpUtilisation: float | None = None
-    heatingUtilisation: float | None = None
-    pidEnabled: bool | None = None
-    sensorDifferential: float | None = None
-    alerts: list[AlertIn] = []
-
-
-class ProfileIn(BaseModel):
-    name: str
-    description: str | None = None
-    public: bool = False
-    profile_type_id: str | None = None
-    profile_type_name: str | None = None
-    steps: list[StepIn] = []
-    alerts: list[AlertIn] = []
-
-
 class UploadRequest(BaseModel):
     portal_token: str
+
+
+class RecipeImportRequest(BaseModel):
+    format: RecipeSourceFormat
+    content: str = Field(min_length=1, max_length=2_000_000)
+    overrides: BrewZillaOverrides | None = None
+    # Raise an alert at the end of every mash rest, mash-out included. Only the server
+    # knows how many rests a file has and what each is called, so it composes one text
+    # per rest rather than taking a single text from the caller.
+    rest_end_alerts: bool = False
 
 
 @router.get("/api/profiles")
@@ -81,6 +58,45 @@ def get_profile(profile_id: str) -> dict:
         if not p:
             raise HTTPException(404, "profile not found")
         return profile_dict(p)
+
+
+def _rest_end_alert(label: str) -> str:
+    """Name the rest in its own end-of-rest alert, so the device says which one ended.
+
+    Exporters commonly name rests "Пауза 64 °C", where a "Пауза завершена: ..." prefix
+    would stutter — such a label carries the sentence on its own.
+    """
+    return f"{label} завершена" if "пауза" in label.lower() else f"Пауза завершена: {label}"
+
+
+@router.post("/api/profiles/import")
+def import_profile(request: RecipeImportRequest) -> dict:
+    """Compile a BrewFather JSON, BeerXML or BeerJSON recipe into an (unsaved) BrewZilla
+    profile, the same shape the AI wizard returns — the editor persists it on save."""
+    try:
+        recipe = import_recipe(request.format, request.content)
+        overrides = request.overrides or BrewZillaOverrides()
+        if request.rest_end_alerts:
+            rests, mash_out = split_mash_out(recipe)
+            overrides = overrides.model_copy(
+                update={
+                    "rest_end_alerts": [
+                        RestEndAlert(
+                            rest_index=index, text=_rest_end_alert(rest_display_name(rest))
+                        )
+                        for index, rest in enumerate(rests)
+                    ],
+                    # The mash-out is a rest too, but the compiler takes its alert through
+                    # a field of its own. Set it whether the mash-out was recognized in the
+                    # file or will be added by default; the compiler ignores it when the
+                    # mash-out is switched off.
+                    "mash_out_end_alert_text": overrides.mash_out_end_alert_text
+                    or _rest_end_alert(rest_display_name(mash_out) if mash_out else "Mash Out"),
+                }
+            )
+        return compile_brewzilla_profile(recipe, overrides)
+    except (ValueError, ValidationError) as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @router.post("/api/profiles", status_code=status.HTTP_201_CREATED)

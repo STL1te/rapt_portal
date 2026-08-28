@@ -7,7 +7,7 @@ named module constants; see docs/beerjson-migration-plan.md section 6 for the ru
 import re
 from typing import Literal
 
-from features.profiles.router import ProfileIn
+from features.profiles.schemas import ProfileIn
 
 from .beerjson_models import MashStepType, RecipeModel
 from .brewzilla_overrides import BrewZillaOverrides
@@ -122,7 +122,9 @@ def _rest_step(
                 duration_type="Temperature",
                 length=None,
                 heating=transition_heating,
-                pid=False,
+                # PID on the ramp too: it eases the approach to the rest temperature,
+                # which is exactly where an unregulated full-power ramp overshoots.
+                pid=pid,
             )
         )
     steps.append(
@@ -147,17 +149,36 @@ def _looks_like_mash_out(rests: list[MashStepType]) -> bool:
     return len(rests) >= 2 and to_celsius(last.step_temperature) >= MASH_OUT_DETECT_MIN_C
 
 
+def rest_display_name(rest: MashStepType) -> str:
+    """The step name a rest gets in the profile — its own, or its temperature.
+
+    Public so a caller composing per-rest alert texts labels each rest exactly the way
+    the step it belongs to is labelled.
+    """
+    return rest.name or f"{to_celsius(rest.step_temperature):g} °C"
+
+
+def split_mash_out(recipe: RecipeModel) -> tuple[list[MashStepType], MashStepType | None]:
+    """Split the recipe's mash steps into ordinary rests and the recognized mash-out.
+
+    Public because `rest_index` in BrewZillaOverrides.rest_end_alerts counts ordinary
+    rests only: a caller attaching an alert to every rest has to apply the same
+    mash-out rule the compiler does, and must not reimplement it.
+    """
+    rests = list(recipe.mash.mash_steps) if recipe.mash else []
+    # Recognized independently of include_mash_out: a rest the source wrote as the
+    # mash-out must never fall through to the ordinary-rest loop either way.
+    recognized = rests.pop() if rests and _looks_like_mash_out(rests) else None
+    return rests, recognized
+
+
 def compile_brewzilla_profile(
     recipe: RecipeModel, overrides: BrewZillaOverrides | None = None
 ) -> dict:
     """Compile a BeerJSON recipe plus BrewZilla overrides into a BrewZilla profile."""
     ov = overrides or BrewZillaOverrides()
 
-    rests = list(recipe.mash.mash_steps) if recipe.mash else []
-
-    # Recognized independently of include_mash_out: a rest the source wrote as the
-    # mash-out must never fall through to the ordinary-rest loop below either way.
-    recognized = rests.pop() if rests and _looks_like_mash_out(rests) else None
+    rests, recognized = split_mash_out(recipe)
 
     mash_out_name = mash_out_temperature_c = mash_out_duration_seconds = None
     if _eff(ov.include_mash_out, True):
@@ -220,7 +241,7 @@ def compile_brewzilla_profile(
         )
         previous_c = _rest_step(
             steps,
-            name=rest.name or f"{to_celsius(rest.step_temperature):g} °C",
+            name=rest_display_name(rest),
             temperature_c=to_celsius(rest.step_temperature),
             duration_seconds=to_seconds(rest.step_time) if rest.step_time else None,
             heating=ov.rest_power_pct,
@@ -263,7 +284,7 @@ def compile_brewzilla_profile(
                     duration_type="Temperature",
                     length=None,
                     heating=ov.heat_power_pct,
-                    pid=False,
+                    pid=_eff(ov.mash_pid_enabled, False),  # same rule as the rest ramps
                 )
             )
         steps.append(

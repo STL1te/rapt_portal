@@ -31,13 +31,13 @@ sys.path.insert(0, str(Path(__file__).parents[1]))  # features.* when PYTHONPATH
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
-from features.ai.brewzilla_compiler import compile_brewzilla_profile
 from features.ai.recipe_wizard import (
     _RECIPE_RESPONSE_FORMAT,
     SubmitRecipe,
     _strip_code_fences,
     _strip_empty_strings,
 )
+from features.recipes.brewzilla_compiler import compile_brewzilla_profile
 
 
 def _relaxed_schema(schema):

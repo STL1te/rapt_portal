@@ -27,8 +27,6 @@ from core.db import (
     HydrometerTelemetry,
     Profile,
 )
-from features.ai.beerjson_schema import assert_valid_beerjson
-from features.ai.brewzilla_overrides import BrewZillaOverrides
 from features.ai.recipe_wizard import (
     RECIPE_WIZARD_VALIDATOR_PROMPT,
     VALIDATOR_LLM,
@@ -54,6 +52,8 @@ from features.ai.services import (
     reset_conversation,
     send_conversation_message,
 )
+from features.recipes.beerjson_schema import assert_valid_beerjson
+from features.recipes.brewzilla_overrides import BrewZillaOverrides
 
 
 def _message(content=None, *, tool_calls=None):
