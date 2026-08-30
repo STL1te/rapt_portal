@@ -20,6 +20,8 @@ async def get_token() -> str:
         return await asyncio.to_thread(rapt_auth.access_token)
     if _token and time.time() < _token_expiry - 60:
         return _token
+    if not (RAPT_USERNAME and RAPT_SECRET):
+        raise RuntimeError(rapt_auth.NOT_CONNECTED)
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
@@ -32,8 +34,7 @@ async def get_token() -> str:
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        resp.raise_for_status()
-        data = resp.json()
+        data = rapt_auth.token_payload(resp)
 
     _token = data["access_token"]
     _token_expiry = time.time() + data.get("expires_in", 3600)

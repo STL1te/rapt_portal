@@ -69,12 +69,25 @@ def _save_refresh(value: str) -> None:
         db.commit()
 
 
-def _post(data: dict) -> dict:
-    resp = httpx.post(TOKEN_URL, data={"client_id": OAUTH_CLIENT_ID, **data}, timeout=30)
+def token_payload(resp: httpx.Response) -> dict:
+    """A token-endpoint reply that actually carries a token.
+
+    Both the error body (invalid_grant, expired code, ...) and a 200 that simply has no
+    access_token in it must name themselves: read straight through, the second one shows
+    up in the job log as a bare KeyError `'access_token'` and says nothing at all.
+    """
     if resp.is_error:
-        # the body carries the real reason (invalid_grant, expired code, ...)
         raise RuntimeError(f"RAPT auth {resp.status_code}: {resp.text or '(empty body)'}")
-    return resp.json()
+    data = resp.json()
+    if not data.get("access_token"):
+        raise RuntimeError(f"RAPT auth {resp.status_code} без access_token: {resp.text[:300]}")
+    return data
+
+
+def _post(data: dict) -> dict:
+    return token_payload(
+        httpx.post(TOKEN_URL, data={"client_id": OAUTH_CLIENT_ID, **data}, timeout=30)
+    )
 
 
 def _store(data: dict) -> str:
@@ -155,17 +168,19 @@ def access_token() -> str:
     with _lock:
         if _access and time.time() < _expiry - 60:
             return _access
-        refresh = _load_refresh()
-        if not refresh:
-            raise RuntimeError(NOT_CONNECTED)
-        try:
-            return _store({"grant_type": "refresh_token", "refresh_token": refresh})
-        except RuntimeError:
-            # a rejected refresh token stays rejected — drop it so the UI says
-            # "not connected" instead of failing every sync with the same error
-            _save_refresh("")
-            _access = ""
-            raise
+        for attempt in (1, 2):
+            refresh = _load_refresh()
+            if not refresh:
+                raise RuntimeError(NOT_CONNECTED)
+            try:
+                return _store(_post({"grant_type": "refresh_token", "refresh_token": refresh}))
+            except RuntimeError:
+                # RAPT rotates the refresh token on every use, so another instance on this
+                # database may have just spent ours. Re-read the row once and use what it
+                # stored; a token that is genuinely dead fails again and says so.
+                if attempt == 2:
+                    raise
+        raise AssertionError("unreachable")
 
 
 def _legacy_token() -> str:
@@ -204,6 +219,34 @@ def demo() -> None:
     expect = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=")
     assert q["code_challenge"] == [expect.decode()]
     _pending.clear()
+
+    # The refresh path must go through the token endpoint. Handing the request dict
+    # straight to _store() shipped once and failed every sync with KeyError
+    # 'access_token' and no request in sight.
+    global _access, _expiry
+    calls = []
+
+    class _FakeResponse:
+        is_error = False
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict:
+            return {"access_token": "at", "refresh_token": "rt", "expires_in": 3600}
+
+    real_post, real_load, real_save = httpx.post, _load_refresh, _save_refresh
+    try:
+        httpx.post = lambda url, **kw: (calls.append(kw["data"]), _FakeResponse())[1]
+        globals()["_load_refresh"] = lambda: "stored-refresh"
+        globals()["_save_refresh"] = lambda value: calls.append(("saved", value))
+        _access, _expiry = "", 0.0
+        assert access_token() == "at"
+        assert calls[0]["grant_type"] == "refresh_token", calls
+        assert calls[0]["refresh_token"] == "stored-refresh", calls
+        assert ("saved", "rt") in calls, "rotated refresh token was not stored"
+    finally:
+        httpx.post, _access, _expiry = real_post, "", 0.0
+        globals()["_load_refresh"], globals()["_save_refresh"] = real_load, real_save
     print("rapt_auth OK")
 
 
