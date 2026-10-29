@@ -123,8 +123,6 @@ async def _run_one(
     strip_empty: bool,
 ) -> dict:
     messages = [m for m in example["messages"] if m["role"] != "assistant"]
-    reference = json.loads(example["messages"][-1]["content"])
-    record = {}
     try:
         response = await client.chat.completions.create(
             model=model,
@@ -140,6 +138,13 @@ async def _run_one(
         raw = response.choices[0].message.content or ""
     except Exception as error:  # noqa: BLE001 — record and move on, eval must finish
         return {"status": "request_error", "error": f"{type(error).__name__}: {error}"}
+    return _score(raw, example, strip_empty)
+
+
+def _score(raw: str, example: dict, strip_empty: bool) -> dict:
+    """Parse/schema/compile status plus leaf match of one model answer against the
+    example's teacher spec. Shared with eval_claude_teacher.py, so both sit on one scale."""
+    reference = json.loads(example["messages"][-1]["content"])
     try:
         spec = json.loads(_strip_code_fences(raw))
     except json.JSONDecodeError as error:
@@ -223,9 +228,7 @@ async def main() -> None:
             if line.strip()
         }
 
-    client = AsyncOpenAI(
-        base_url=args.base_url, api_key=os.getenv("OPENAI_API_KEY", "not-needed")
-    )
+    client = AsyncOpenAI(base_url=args.base_url, api_key=os.getenv("OPENAI_API_KEY", "not-needed"))
     semaphore = asyncio.Semaphore(args.concurrency)
     lock = asyncio.Lock()
 
@@ -241,11 +244,12 @@ async def main() -> None:
         print(f"[{index}] {record['status']}", record.get("error", ""), flush=True)
 
     await asyncio.gather(*(worker(i, ex) for i, ex in enumerate(examples) if i not in done))
+    _print_summary(args.output)
 
+
+def _print_summary(output: Path) -> None:
     results = [
-        json.loads(line)
-        for line in args.output.read_text(encoding="utf-8").split("\n")
-        if line.strip()
+        json.loads(line) for line in output.read_text(encoding="utf-8").split("\n") if line.strip()
     ]
     statuses = {}
     for record in results:
