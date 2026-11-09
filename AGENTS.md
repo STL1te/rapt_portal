@@ -36,7 +36,7 @@ RAPT Portal is a self-hosted dashboard for RAPT devices:
 - `backend/features/<name>/` - one folder per feature, each with `router.py`
   (local API routes) and, where needed, `services.py` (feature logic and
   serialization): `hydrometers`, `brewzillas`, `profiles`, `yeasts`, `ai`,
-  `system`. `recipes` has no routes: it is the shared recipe model, the
+  `system`, `batches` (local-only bottled-batch tracker, no RAPT data). `recipes` has no routes: it is the shared recipe model, the
   importers and the profile compiler.
 - `backend/features/recipes/` - `importers.py` (BrewFather JSON, BeerXML,
   BeerJSON -> `RecipeModel`), `brewzilla_compiler.py` (deterministic
@@ -67,7 +67,7 @@ RAPT Portal is a self-hosted dashboard for RAPT devices:
 - `frontend/src/hooks/` - React hooks (`useTitle.ts`).
 - `frontend/src/App.tsx` - SPA route map and navigation.
 - `frontend/src/pages/` - page-level React views, one folder per area
-  (`hydrometers`, `brewzillas`, `profiles`, `yeasts`, `admin`).
+  (`hydrometers`, `brewzillas`, `profiles`, `yeasts`, `batches`, `admin`).
 - `frontend/src/components/` - chart and shared UI components.
 - Imports inside `frontend/src` use the `@/` alias (`@` -> `src`), configured in
   `vite.config.ts` and `tsconfig.app.json`. Prefer it over `../` chains.

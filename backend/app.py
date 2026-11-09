@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 from core.config import SYNC_INTERVAL_SECONDS  # noqa: E402
 from features.ai.router import router as ai_router  # noqa: E402
+from features.batches.router import router as batches_router  # noqa: E402
 from features.brewzillas.router import router as brewzillas_router  # noqa: E402
 from features.hydrometers.router import router as hydrometers_router  # noqa: E402
 from features.profiles.router import router as profiles_router  # noqa: E402
@@ -59,4 +60,5 @@ app.include_router(hydrometers_router)
 app.include_router(brewzillas_router)
 app.include_router(profiles_router)
 app.include_router(yeasts_router)
+app.include_router(batches_router)
 app.include_router(ai_router)

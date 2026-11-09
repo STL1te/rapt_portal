@@ -45,3 +45,20 @@ export async function post<T>(
   if (!r.ok) await fail(r)
   return r.json()
 }
+
+export async function put<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) await fail(r)
+  return r.json()
+}
+
+/** DELETE; resolves to the parsed body, or undefined for 204 No Content. */
+export async function del<T = void>(path: string): Promise<T> {
+  const r = await fetch(path, { method: 'DELETE' })
+  if (!r.ok) await fail(r)
+  return r.status === 204 ? (undefined as T) : r.json()
+}

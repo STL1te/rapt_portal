@@ -2468,3 +2468,83 @@ th {
     flex: 1 1 220px;
   }
 }
+
+/* batch tracker */
+.batch-badge {
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+
+.gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+  font-size: var(--text-xs);
+}
+
+.gantt-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  vertical-align: middle;
+}
+
+.gantt-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 200px) 1fr;
+  gap: var(--space-sm);
+  align-items: center;
+  min-height: 32px;
+}
+
+.gantt-row.finished .gantt-bar {
+  opacity: 0.35;
+}
+
+.gantt-row.finished .gantt-name {
+  color: var(--muted);
+}
+
+.gantt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  padding-left: var(--space-xs);
+}
+
+.gantt-track {
+  position: relative;
+  height: 32px;
+  overflow: hidden;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 9px;
+  height: 14px;
+}
+
+.gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--accent);
+}
+
+.gantt-axis {
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.gantt-axis span {
+  position: absolute;
+  bottom: 4px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-2xs);
+}

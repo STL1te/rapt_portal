@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import ThemeToggle from '@/components/ThemeToggle'
 import Admin from '@/pages/admin/Admin'
+import BatchDetail from '@/pages/batches/BatchDetail'
+import Batches from '@/pages/batches/Batches'
 import SystemSyncs from '@/pages/admin/SystemSyncs'
 import BrewSessionPage from '@/pages/brewzillas/BrewSessionPage'
 import BrewZillaDetail from '@/pages/brewzillas/BrewZillaDetail'
@@ -24,6 +26,7 @@ const primaryNavItems = [
   { to: '/brewzillas', label: 'Пивоварни', icon: 'fa-solid fa-fire-burner', end: false },
   { to: '/profiles', label: 'Профили', icon: 'fa-solid fa-scroll', end: false },
   { to: '/yeasts', label: 'Дрожжи', icon: 'fa-solid fa-vial', end: false },
+  { to: '/batches', label: 'Партии', icon: 'fa-solid fa-beer-mug-empty', end: false },
 ] as const
 
 export default function App() {
@@ -129,6 +132,8 @@ export default function App() {
           <Route path="/profiles/:id/edit" element={<ProfileEditor />} />
           <Route path="/yeasts" element={<Yeasts />} />
           <Route path="/yeasts/:id" element={<YeastDetail />} />
+          <Route path="/batches" element={<Batches />} />
+          <Route path="/batches/:id" element={<BatchDetail />} />
           <Route path="/admin" element={<Admin />}>
             <Route index element={<Navigate to="syncs" replace />} />
             <Route path="syncs" element={<SystemSyncs />} />

@@ -1,10 +1,11 @@
 """SQLAlchemy models and session factory."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -160,6 +161,35 @@ class Profile(Base):
     # local edits not yet uploaded to RAPT; cleared when sync_profiles re-pulls it
     draft: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Batch(Base):
+    """A bottled batch tracked through carbonation and conditioning until it runs out.
+
+    Plain calendar dates, not timestamps: the brewer picks days, not moments.
+    """
+
+    __tablename__ = "batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String)
+    bottled_on: Mapped[date] = mapped_column(Date)
+    volume_l: Mapped[float] = mapped_column(Float)  # volume at bottling
+    carbonation_until: Mapped[date] = mapped_column(Date)
+    conditioning_until: Mapped[date] = mapped_column(Date)
+    finished_on: Mapped[date | None] = mapped_column(Date)  # tracker stopped
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class BatchVolume(Base):
+    """Remaining-volume log of a batch; the batch row keeps the starting volume."""
+
+    __tablename__ = "batch_volumes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), index=True)
+    recorded_on: Mapped[date] = mapped_column(Date)
+    volume_l: Mapped[float] = mapped_column(Float)
 
 
 class AppSetting(Base):
