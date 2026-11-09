@@ -20,22 +20,35 @@ export function StatusBadge({ status }: { status: BatchStatus }) {
   )
 }
 
-// ponytail: all batches share one time axis; past a year or two of history the bars get thin —
-// add a range picker when that happens.
+const WINDOW_DAYS = 90
+
 function Gantt({ batches }: { batches: Batch[] }) {
   const navigate = useNavigate()
+  // one long-conditioning batch would stretch the axis over a year and squeeze the rest,
+  // so the default view is a window around today
+  const [all, setAll] = useState(false)
   const now = today()
-  const rows = [...batches].reverse().map((b) => ({ b, segments: phases(b, now) }))
-  const start = Math.min(...batches.map((b) => day(b.bottled_on))) - 3 * DAY_MS
-  const end =
-    Math.max(day(now), ...rows.flatMap((r) => r.segments.map((s) => day(s.to)))) + 3 * DAY_MS
-  const pos = (t: number) => ((t - start) / (end - start)) * 100
+  const fullStart = Math.min(...batches.map((b) => day(b.bottled_on))) - 3 * DAY_MS
+  const fullEnd =
+    Math.max(day(now), ...batches.flatMap((b) => phases(b, now).map((s) => day(s.to)))) + 3 * DAY_MS
+  const start = all ? fullStart : Math.max(fullStart, day(now) - WINDOW_DAYS * DAY_MS)
+  const end = all ? fullEnd : Math.min(fullEnd, day(now) + WINDOW_DAYS * DAY_MS)
+  const pos = (t: number) => ((Math.min(Math.max(t, start), end) - start) / (end - start)) * 100
 
-  // Weeks while a few months fit, month starts beyond that. At most five ticks so the labels
-  // fit a phone, and none at the right edge where the track would cut the label.
+  // segments cut at the window edges; a batch with nothing inside the window drops off the chart
+  const rows = [...batches]
+    .reverse()
+    .map((b) => ({
+      b,
+      segments: phases(b, now).filter((s) => pos(day(s.to)) > pos(day(s.from))),
+    }))
+    .filter((r) => r.segments.length)
+
+  // Weeks while a few months fit, month starts beyond that. At most five day labels or seven
+  // month labels so they fit a phone, and none at the right edge where the track cuts them.
   const weekly = end - start <= 120 * DAY_MS
   const stepWeeks = Math.ceil((end - start) / (7 * DAY_MS) / 5)
-  const stepMonths = Math.ceil((end - start) / (30 * DAY_MS) / 5)
+  const stepMonths = Math.ceil((end - start) / (30 * DAY_MS) / 7)
   const s = new Date(start)
   const ticks: number[] = []
   for (
@@ -46,11 +59,14 @@ function Gantt({ batches }: { batches: Batch[] }) {
       : new Date(t.getFullYear(), t.getMonth() + stepMonths, 1)
   )
     ticks.push(t.getTime())
-  const tickLabel = (t: number) =>
-    new Date(t).toLocaleDateString(
-      undefined,
-      weekly ? { day: 'numeric', month: 'short' } : { month: 'short', year: '2-digit' },
-    )
+  // a January tick reads as the year, so a long axis still says which year it is
+  const tickLabel = (t: number) => {
+    const d = new Date(t)
+    if (weekly) return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+    return d.getMonth() === 0
+      ? String(d.getFullYear())
+      : d.toLocaleDateString(undefined, { month: 'short' })
+  }
 
   return (
     <section className="panel">
@@ -63,6 +79,24 @@ function Gantt({ batches }: { batches: Batch[] }) {
             </span>
           ))}
         <span className="muted">бледные — завершённые</span>
+      </div>
+      <div className="chart-toolbar">
+        <span className="chart-toolbar-label">Окно</span>
+        <div className="chart-presets">
+          {[
+            [false, `±${WINDOW_DAYS / 30} мес`],
+            [true, 'всё'],
+          ].map(([value, label]) => (
+            <button
+              key={String(value)}
+              type="button"
+              className={`chart-preset${all === value ? ' active' : ''}`}
+              onClick={() => setAll(value as boolean)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="gantt">
         <div className="gantt-row gantt-axis">

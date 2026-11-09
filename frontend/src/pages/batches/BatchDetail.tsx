@@ -50,6 +50,14 @@ function VolumeChart({ batch }: { batch: Batch }) {
   const step = Math.max(1, Math.ceil((domainEnd - domainStart) / 86_400_000 / 4)) * 86_400_000
   const ticks: number[] = []
   for (let t = domainStart; t <= domainEnd; t += step) ticks.push(t)
+  // past most of a year the day stops mattering and the year starts to
+  const long = domainEnd - domainStart > 300 * 86_400_000
+  const tickLabel = (t: number) => {
+    const d = new Date(t)
+    return long
+      ? `${d.toLocaleDateString(undefined, { month: 'short' })} ${String(d.getFullYear()).slice(2)}`
+      : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  }
 
   return (
     <>
@@ -62,9 +70,7 @@ function VolumeChart({ batch }: { batch: Batch }) {
             scale="time"
             domain={[domainStart, domainEnd]}
             ticks={ticks}
-            tickFormatter={(t: number) =>
-              new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-            }
+            tickFormatter={tickLabel}
             stroke="#888"
           />
           <YAxis domain={[0, 'auto']} unit=" л" width={48} stroke="#888" />
