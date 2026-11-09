@@ -1,13 +1,22 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import {
+  Brush,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { createBatch, getBatches } from '@/api'
 import type { Batch } from '@/types'
 import { batchStatus, day, dayFmt, phases, STATUS, today, type BatchStatus } from '@/lib/batch'
 import { useTitle } from '@/hooks/useTitle'
 import BatchForm from './BatchForm'
-
-const DAY_MS = 86_400_000
 
 export function StatusBadge({ status }: { status: BatchStatus }) {
   return (
@@ -21,52 +30,88 @@ export function StatusBadge({ status }: { status: BatchStatus }) {
 }
 
 const WINDOW_DAYS = 90
+const ROW_PX = 44
 
+/** Name of the batch, drawn above its bar inside the plot so no column eats a phone's width. */
+function NameTick({
+  x,
+  y,
+  payload,
+  rows,
+  onOpen,
+}: {
+  x?: number
+  y?: number
+  payload?: { value: number }
+  rows: Batch[]
+  onOpen: (b: Batch) => void
+}) {
+  const b = payload ? rows[payload.value] : undefined
+  if (!b || x == null || y == null) return null
+  return (
+    <text
+      x={x}
+      y={y - 12}
+      fontSize={13}
+      fill={b.finished_on ? 'var(--muted)' : 'var(--text)'}
+      style={{ cursor: 'pointer' }}
+      onClick={() => onOpen(b)}
+    >
+      {b.name}
+    </text>
+  )
+}
+
+/** Every phase is a thick line at its batch's row over a day-by-day series, so the Brush
+ *  zooms and pans time the same way it does on the hydrometer chart. */
 function Gantt({ batches }: { batches: Batch[] }) {
   const navigate = useNavigate()
-  // one long-conditioning batch would stretch the axis over a year and squeeze the rest,
-  // so the default view is a window around today
-  const [all, setAll] = useState(false)
+  const open = (b: Batch) => navigate(`/batches/${b.id}`)
   const now = today()
-  const fullStart = Math.min(...batches.map((b) => day(b.bottled_on))) - 3 * DAY_MS
-  const fullEnd =
-    Math.max(day(now), ...batches.flatMap((b) => phases(b, now).map((s) => day(s.to)))) + 3 * DAY_MS
-  const start = all ? fullStart : Math.max(fullStart, day(now) - WINDOW_DAYS * DAY_MS)
-  const end = all ? fullEnd : Math.min(fullEnd, day(now) + WINDOW_DAYS * DAY_MS)
-  const pos = (t: number) => ((Math.min(Math.max(t, start), end) - start) / (end - start)) * 100
-
-  // segments cut at the window edges; a batch with nothing inside the window drops off the chart
-  const rows = [...batches]
-    .reverse()
-    .map((b) => ({
-      b,
-      segments: phases(b, now).filter((s) => pos(day(s.to)) > pos(day(s.from))),
-    }))
-    .filter((r) => r.segments.length)
-
-  // Weeks while a few months fit, month starts beyond that. At most five day labels or seven
-  // month labels so they fit a phone, and none at the right edge where the track cuts them.
-  const weekly = end - start <= 120 * DAY_MS
-  const stepWeeks = Math.ceil((end - start) / (7 * DAY_MS) / 5)
-  const stepMonths = Math.ceil((end - start) / (30 * DAY_MS) / 7)
-  const s = new Date(start)
-  const ticks: number[] = []
-  for (
-    let t = weekly ? new Date(start) : new Date(s.getFullYear(), s.getMonth() + 1, 1);
-    pos(t.getTime()) < 88;
-    t = weekly
-      ? new Date(t.getTime() + stepWeeks * 7 * DAY_MS)
-      : new Date(t.getFullYear(), t.getMonth() + stepMonths, 1)
+  const rows = [...batches].reverse() // oldest on top
+  const series = rows.flatMap((b, i) =>
+    phases(b, now).map((p) => ({ ...p, b, i, key: `r${i}_${p.status}` })),
   )
-    ticks.push(t.getTime())
-  // a January tick reads as the year, so a long axis still says which year it is
-  const tickLabel = (t: number) => {
-    const d = new Date(t)
-    if (weekly) return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-    return d.getMonth() === 0
-      ? String(d.getFullYear())
-      : d.toLocaleDateString(undefined, { month: 'short' })
+  const byKey = Object.fromEntries(series.map((s) => [s.key, s]))
+
+  const data: Record<string, number>[] = []
+  const last = Math.max(day(now), ...series.map((s) => day(s.to)))
+  // setDate keeps local midnight across DST, adding 24h would not
+  for (
+    const d = new Date(Math.min(...rows.map((b) => day(b.bottled_on))));
+    d.getTime() <= last;
+    d.setDate(d.getDate() + 1)
+  ) {
+    const t = d.getTime()
+    const point: Record<string, number> = { t }
+    for (const s of series) if (t >= day(s.from) && t <= day(s.to)) point[s.key] = s.i
+    data.push(point)
   }
+  const todayIndex = data.findIndex((p) => p.t >= day(now))
+  const startIndex = Math.max(0, todayIndex - WINDOW_DAYS)
+  const endIndex = Math.min(data.length - 1, todayIndex + WINDOW_DAYS)
+
+  const fmtDay = (t: number) =>
+    new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  const fmtMonth = (t: number) =>
+    new Date(t).toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
+  const lines = (width: number) =>
+    series.map((s) => (
+      <Line
+        key={s.key}
+        dataKey={s.key}
+        name={s.b.name}
+        stroke={STATUS[s.status].color}
+        strokeOpacity={s.b.finished_on ? 0.35 : 1}
+        strokeWidth={width}
+        strokeLinecap="butt"
+        dot={false}
+        activeDot={false}
+        isAnimationActive={false}
+        style={{ cursor: 'pointer' }}
+        onClick={() => open(s.b)}
+      />
+    ))
 
   return (
     <section className="panel">
@@ -80,62 +125,52 @@ function Gantt({ batches }: { batches: Batch[] }) {
           ))}
         <span className="muted">бледные — завершённые</span>
       </div>
-      <div className="chart-toolbar">
-        <span className="chart-toolbar-label">Окно</span>
-        <div className="chart-presets">
-          {[
-            [false, `±${WINDOW_DAYS / 30} мес`],
-            [true, 'всё'],
-          ].map(([value, label]) => (
-            <button
-              key={String(value)}
-              type="button"
-              className={`chart-preset${all === value ? ' active' : ''}`}
-              onClick={() => setAll(value as boolean)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="gantt">
-        <div className="gantt-row gantt-axis">
-          <div />
-          <div className="gantt-track">
-            {ticks.map((t) => (
-              <span key={t} style={{ left: `${pos(t)}%` }}>
-                {tickLabel(t)}
-              </span>
-            ))}
-          </div>
-        </div>
-        {rows.map(({ b, segments }) => (
-          <div
-            key={b.id}
-            className={`gantt-row row${b.finished_on ? ' finished' : ''}`}
-            onClick={() => navigate(`/batches/${b.id}`)}
+      <ResponsiveContainer width="100%" height={rows.length * ROW_PX + 90}>
+        <LineChart data={data} margin={{ top: 20, right: 16, bottom: 8, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" horizontal={false} />
+          <XAxis
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={['dataMin', 'dataMax']}
+            tickFormatter={fmtDay}
+            stroke="#888"
+          />
+          <YAxis
+            type="number"
+            domain={[-0.5, rows.length - 0.5]}
+            ticks={rows.map((_, i) => i)}
+            reversed
+            mirror
+            axisLine={false}
+            tickLine={false}
+            tick={<NameTick rows={rows} onOpen={open} />}
+          />
+          <Tooltip
+            isAnimationActive={false}
+            labelFormatter={(t) => new Date(Number(t)).toLocaleDateString()}
+            formatter={(_value, name, item) =>
+              [STATUS[byKey[String(item.dataKey)].status].label, name] as const
+            }
+          />
+          <ReferenceLine x={day(now)} stroke="var(--accent)" strokeDasharray="4 3" />
+          {lines(14)}
+          <Brush
+            dataKey="t"
+            height={44}
+            travellerWidth={10}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            stroke="var(--accent)"
+            fill="var(--panel)"
+            tickFormatter={fmtMonth}
           >
-            <div className="gantt-name" title={b.name}>
-              {b.name}
-            </div>
-            <div className="gantt-track">
-              {segments.map((s) => (
-                <span
-                  key={s.status}
-                  className="gantt-bar"
-                  title={`${STATUS[s.status].label}: ${dayFmt(s.from)} — ${dayFmt(s.to)}`}
-                  style={{
-                    left: `${pos(day(s.from))}%`,
-                    width: `${pos(day(s.to)) - pos(day(s.from))}%`,
-                    background: STATUS[s.status].color,
-                  }}
-                />
-              ))}
-              <i className="gantt-today" style={{ left: `${pos(day(now))}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
+            {/* no axes in here: recharts 3 shares them with the main chart and a hidden
+                preview YAxis replaces the one that draws the batch names */}
+            <LineChart>{lines(3)}</LineChart>
+          </Brush>
+        </LineChart>
+      </ResponsiveContainer>
     </section>
   )
 }
