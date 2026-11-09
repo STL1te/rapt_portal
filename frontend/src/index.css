@@ -2475,7 +2475,7 @@ th {
   background: color-mix(in srgb, var(--c) 16%, transparent);
 }
 
-.gantt-legend {
+.batch-legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-md);
@@ -2483,7 +2483,7 @@ th {
   font-size: var(--text-xs);
 }
 
-.gantt-legend i {
+.batch-legend i {
   display: inline-block;
   width: 10px;
   height: 10px;
@@ -2547,4 +2547,41 @@ th {
   white-space: nowrap;
   border-left: 1px solid var(--border);
   padding-left: var(--space-2xs);
+}
+
+.batch-volume-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+/* two fields share a phone row, the button wraps under them at full width */
+.batch-volume-form > .field {
+  flex: 1 1 140px;
+  max-width: 220px;
+}
+
+@media (max-width: 800px) {
+  .batch-volume-form > .field {
+    max-width: none;
+  }
+
+  .batch-volume-form > button {
+    flex-basis: 100%;
+  }
+
+  .gantt-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .gantt-axis > div:first-child {
+    display: none;
+  }
+
+  .gantt-name {
+    padding-top: var(--space-xs);
+  }
 }

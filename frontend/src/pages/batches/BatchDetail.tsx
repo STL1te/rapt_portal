@@ -44,51 +44,63 @@ function VolumeChart({ batch }: { batch: Batch }) {
       ? { at: batch.finished_on, label: 'Окончание', color: STATUS.finished.color }
       : { at: now, label: 'Сегодня', color: 'var(--accent)' },
   ]
+  const domainStart = day(batch.bottled_on)
   const domainEnd = Math.max(last.t, ...marks.map((m) => day(m.at)))
+  // whole days, four steps: short labels that fit a phone
+  const step = Math.max(1, Math.ceil((domainEnd - domainStart) / 86_400_000 / 4)) * 86_400_000
+  const ticks: number[] = []
+  for (let t = domainStart; t <= domainEnd; t += step) ticks.push(t)
 
   return (
-    <ResponsiveContainer width="100%" height={360}>
-      <LineChart data={points} margin={{ top: 28, right: 28, bottom: 8, left: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
-        <XAxis
-          dataKey="t"
-          type="number"
-          scale="time"
-          domain={[day(batch.bottled_on), domainEnd]}
-          tickFormatter={(t: number) => new Date(t).toLocaleDateString()}
-          stroke="#888"
-        />
-        <YAxis domain={[0, 'auto']} unit=" л" stroke="#888" />
-        <Tooltip
-          isAnimationActive={false}
-          labelFormatter={(t) => new Date(Number(t)).toLocaleDateString()}
-          formatter={(value) => [`${value} л`, 'Объём'] as const}
-        />
-        {marks.map((m, i) => (
-          <ReferenceLine
-            key={m.label}
-            x={day(m.at)}
-            stroke={m.color}
-            strokeDasharray="4 3"
-            // alternate heights so marks a few days apart do not print over each other
-            label={{
-              value: m.label,
-              position: i % 2 ? 'insideTopLeft' : 'top',
-              fill: m.color,
-              fontSize: 12,
-            }}
+    <>
+      <ResponsiveContainer width="100%" height={320}>
+        <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
+          <XAxis
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={[domainStart, domainEnd]}
+            ticks={ticks}
+            tickFormatter={(t: number) =>
+              new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+            }
+            stroke="#888"
           />
+          <YAxis domain={[0, 'auto']} unit=" л" width={48} stroke="#888" />
+          <Tooltip
+            isAnimationActive={false}
+            labelFormatter={(t) => new Date(Number(t)).toLocaleDateString()}
+            formatter={(value) => [`${value} л`, 'Объём'] as const}
+          />
+          {marks.map((m) => (
+            <ReferenceLine
+              key={m.label}
+              x={day(m.at)}
+              stroke={m.color}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+            />
+          ))}
+          <Line
+            type="stepAfter"
+            dataKey="v"
+            stroke={STATUS.ready.color}
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+      {/* mark names live here, not on the lines: marks days apart would print over each other */}
+      <div className="batch-legend">
+        {marks.map((m) => (
+          <span key={m.label}>
+            <i style={{ background: m.color }} /> {m.label} {dayFmt(m.at)}
+          </span>
         ))}
-        <Line
-          type="stepAfter"
-          dataKey="v"
-          stroke={STATUS.ready.color}
-          strokeWidth={2}
-          dot={{ r: 3 }}
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+      </div>
+    </>
   )
 }
 
@@ -108,8 +120,20 @@ export default function BatchDetail() {
   })
   useTitle(data?.name ?? 'Партия')
 
+  const back = (
+    <a className="back" onClick={() => navigate('/batches')}>
+      <i className="fa-solid fa-arrow-left" /> Партии
+    </a>
+  )
+
   if (isLoading) return <p>Загрузка…</p>
-  if (error) return <p className="error">Ошибка: {String(error)}</p>
+  if (error)
+    return (
+      <div>
+        {back}
+        <p className="error">Ошибка: {String(error)}</p>
+      </div>
+    )
   if (!data) return null
   const batch = data
 
@@ -135,6 +159,7 @@ export default function BatchDetail() {
 
   return (
     <div>
+      {back}
       <div className="page-head">
         <div>
           <h2>{batch.name}</h2>
@@ -218,7 +243,7 @@ export default function BatchDetail() {
           <i className="fa-solid fa-scale-balanced" /> Остатки
         </h3>
         <form
-          className="field-row"
+          className="batch-volume-form"
           onSubmit={(e) => {
             e.preventDefault()
             void run(() => addBatchVolume(batch.id, volumeDay, Number(volume))).then(
@@ -247,12 +272,9 @@ export default function BatchDetail() {
               onChange={(e) => setVolume(e.target.value)}
             />
           </label>
-          <div className="field profile-wizard-actions">
-            <span>&nbsp;</span>
-            <button type="submit" className="btn-solid" disabled={busy}>
-              Обновить остаток
-            </button>
-          </div>
+          <button type="submit" className="btn-solid" disabled={busy}>
+            Обновить остаток
+          </button>
         </form>
         {batch.volumes.length ? (
           <div className="table-wrap">

@@ -31,14 +31,19 @@ function Gantt({ batches }: { batches: Batch[] }) {
     Math.max(day(now), ...rows.flatMap((r) => r.segments.map((s) => day(s.to)))) + 3 * DAY_MS
   const pos = (t: number) => ((t - start) / (end - start)) * 100
 
-  // weekly ticks while a few months fit, month starts beyond that
+  // Weeks while a few months fit, month starts beyond that. At most five ticks so the labels
+  // fit a phone, and none at the right edge where the track would cut the label.
   const weekly = end - start <= 120 * DAY_MS
+  const stepWeeks = Math.ceil((end - start) / (7 * DAY_MS) / 5)
+  const stepMonths = Math.ceil((end - start) / (30 * DAY_MS) / 5)
   const s = new Date(start)
   const ticks: number[] = []
   for (
     let t = weekly ? new Date(start) : new Date(s.getFullYear(), s.getMonth() + 1, 1);
-    t.getTime() <= end;
-    t = weekly ? new Date(t.getTime() + 7 * DAY_MS) : new Date(t.getFullYear(), t.getMonth() + 1, 1)
+    pos(t.getTime()) < 88;
+    t = weekly
+      ? new Date(t.getTime() + stepWeeks * 7 * DAY_MS)
+      : new Date(t.getFullYear(), t.getMonth() + stepMonths, 1)
   )
     ticks.push(t.getTime())
   const tickLabel = (t: number) =>
@@ -49,7 +54,7 @@ function Gantt({ batches }: { batches: Batch[] }) {
 
   return (
     <section className="panel">
-      <div className="gantt-legend">
+      <div className="batch-legend">
         {(Object.keys(STATUS) as BatchStatus[])
           .filter((s) => s !== 'finished')
           .map((s) => (
