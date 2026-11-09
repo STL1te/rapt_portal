@@ -2560,7 +2560,36 @@ th {
 /* two fields share a phone row, the button wraps under them at full width */
 .batch-volume-form > .field {
   flex: 1 1 140px;
+  min-width: 0;
   max-width: 220px;
+}
+
+.batch-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-md);
+}
+
+.batch-form-grid > .field {
+  min-width: 0;
+}
+
+/* iOS Safari draws date inputs natively: an intrinsic width that spills out of a narrow
+   column, taller than text inputs, value centred, and no height at all once emptied */
+.field input[type='date'] {
+  appearance: none;
+  min-width: 0;
+}
+
+.field input[type='date']::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: left;
+}
+
+/* one fixed height for date and number fields, so labels in a row line up */
+.batch-form-grid input,
+.batch-volume-form input {
+  height: calc(1lh + 2 * var(--space-xs) + 2px);
 }
 
 @media (max-width: 800px) {

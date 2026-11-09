@@ -52,7 +52,7 @@ export default function BatchForm({
           onChange={(e) => set('name', e.target.value)}
         />
       </label>
-      <div className="field-row">
+      <div className="batch-form-grid">
         <label className="field">
           <span>Дата розлива</span>
           <input
